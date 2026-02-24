@@ -149,7 +149,13 @@ class FinnaRecord:
             return ""
         
         f_year = records['year'] # 2017
-        
+
+        # should be a plain number..
+        iyear = int(f_year)
+        if (iyear < 1800 or iyear > 2100):
+            # not usable as a film
+            return ""
+
         # validate it is a date, decade or year?
         return f_year
 
@@ -563,8 +569,14 @@ def getlanguageqcode(commands):
     # mapping language to qcode
     d_langqcode = dict()
     d_langqcode["englanti"] = "Q1860"
+    d_langqcode["eng"] = "Q1860" # langcode
     d_langqcode["suomi"] = "Q1412"
-    
+    d_langqcode["fin"] = "Q1412" # langcode
+    d_langqcode["ruotsi"] = "Q9027"
+    d_langqcode["swe"] = "Q9027" # langcode
+    d_langqcode["ranska"] = "Q150"
+    d_langqcode["fra"] = "Q150" # langcode
+
     if "language" not in commands:
         return ""
 

@@ -32,7 +32,7 @@ class FinnaRecord:
         self.albumtitle = None
         self.artistname = None
         self.publishername = None
-        self.releaseyear = None
+        #self.releaseyear = None
         self.languagecode = None
         self.origlangcode = None
 
@@ -155,6 +155,12 @@ class FinnaRecord:
             return ""
         
         f_year = records['year'] # 2017
+
+        # should be a plain number..
+        iyear = int(f_year)
+        if (iyear < 1800 or iyear > 2100):
+            # not usable as an album
+            return ""
         
         # validate it is a date, decade or year?
         return f_year
@@ -510,6 +516,9 @@ def getlanguageqcode(commands):
     d_langqcode["fin"] = "Q1412" # langcode
     d_langqcode["ruotsi"] = "Q9027"
     d_langqcode["swe"] = "Q9027" # langcode
+    d_langqcode["ranska"] = "Q150"
+    d_langqcode["fra"] = "Q150" # langcode
+    
     
     if "language" not in commands:
         return ""
