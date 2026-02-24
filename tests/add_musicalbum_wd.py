@@ -415,6 +415,7 @@ def checkproperties(repo, itemqcode):
 
     return True
 
+# todo: read config for mapping
 def getartistqcode(commands):
 
     # mapping name to artist qcode
@@ -442,6 +443,7 @@ def getartistqcode(commands):
     print("artist not found", d_artisttoqcode)
     return ""
 
+# todo: read config for mapping
 def getgenreqcode(commands):
 
     # mapping genre to qcode
@@ -459,6 +461,7 @@ def getgenreqcode(commands):
         return d_genretoqcode[genre]
     return ""
 
+# todo: read config for mapping
 def getlabelqcode(commands):
 
     # mapping label to qcode
@@ -476,6 +479,8 @@ def getlabelqcode(commands):
         return d_labeltoqcode[lbl]
     return ""
 
+# todo: read config for mapping?
+# don't need many so might as well hard-code?
 # country of origin
 def getcountryqcode(commands):
 
@@ -492,6 +497,8 @@ def getcountryqcode(commands):
         return d_countryqcode[cq]
     return ""
 
+# todo: read config for mapping?
+# don't need many so might as well hard-code?
 # language of album
 def getlanguageqcode(commands):
 
@@ -541,6 +548,7 @@ def add_item_value(repo, wditem, prop, value):
     claim.setTarget(value)
     wditem.addClaim(claim)#, summary='Adding 1 claim')
 
+# todo: use data from record instead from commandline
 def add_album_properties(repo, wditem, commands):
     # instance of
     if not 'P31' in wditem.claims:

@@ -468,6 +468,7 @@ def checkproperties(repo, itemqcode):
 
     return True
 
+# todo: read config for mapping
 def getdirectorqcode(commands):
 
     # mapping name to qcode
@@ -486,6 +487,7 @@ def getdirectorqcode(commands):
         return d_directorqcode[director]
     return ""
 
+# todo: read config for mapping
 # eroaa kirjan kirjoittajasta
 def getscreenwriterqcode(commands):
 
@@ -502,6 +504,7 @@ def getscreenwriterqcode(commands):
     return ""
 
 
+# todo: read config for mapping
 def getproductioncompanyqcode(commands):
 
     # mapping name to qcode
@@ -516,6 +519,7 @@ def getproductioncompanyqcode(commands):
         return d_productionqcode[productioncompany]
     return ""
 
+# todo: read config for mapping
 def getfilmgenreqcode(commands):
 
     # mapping genre to qcode
@@ -535,6 +539,8 @@ def getfilmgenreqcode(commands):
         return d_genretoqcode[genre]
     return ""
 
+# todo: read config for mapping
+# don't need many so might as well hard-code?
 def getcountryqcode(commands):
 
     # mapping country to qcode
@@ -550,6 +556,8 @@ def getcountryqcode(commands):
         return d_countryqcode[cq]
     return ""
 
+# todo: read config for mapping?
+# don't need many so might as well hard-code?
 def getlanguageqcode(commands):
 
     # mapping language to qcode
@@ -577,7 +585,7 @@ def add_item_value(repo, wditem, prop, value):
     claim.setTarget(value)
     wditem.addClaim(claim)#, summary='Adding 1 claim')
 
-
+# todo: use data from record instead from commandline
 def add_film_properties(repo, wditem, commands):
 
     # perustuu teokseen (P144)

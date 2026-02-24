@@ -434,6 +434,7 @@ def checkproperties(repo, itemqcode):
 # asteri-id to qcode
 #def getwriterqcodebyasteri(commands):
 
+# todo: read config for mapping
 def getwriterqcode(commands):
 
     # mapping name to qcode
@@ -454,6 +455,7 @@ def getwriterqcode(commands):
         return d_writerqcode[writer]
     return ""
 
+# todo: read config for mapping
 def getgenreqcode(commands):
 
     # mapping genre to qcode
@@ -470,6 +472,7 @@ def getgenreqcode(commands):
         return d_genretoqcode[genre]
     return ""
 
+# todo: read config for mapping
 def getworktypecode(commands):
 
     # mapping worktype to qcode
@@ -485,6 +488,7 @@ def getworktypecode(commands):
         return d_worktypeqcode[wt]
     return ""
 
+# todo: read config for mapping
 def getpublisherqcode(commands):
 
     # mapping publisher to qcode
@@ -502,6 +506,8 @@ def getpublisherqcode(commands):
         return d_publisherqcode[pub]
     return ""
 
+# todo: read config for mapping?
+# don't need many so might as well hard-code?
 def getcountryqcode(commands):
 
     # mapping country to qcode
@@ -517,6 +523,8 @@ def getcountryqcode(commands):
         return d_countryqcode[cq]
     return ""
 
+# todo: read config for mapping?
+# don't need many so might as well hard-code?
 def getlanguageqcode(commands):
 
     # mapping language to qcode
@@ -556,6 +564,7 @@ def add_item_value(repo, wditem, prop, value):
     wditem.addClaim(claim)#, summary='Adding 1 claim')
 
 # book edition: painos, laitos tai käännös
+# todo: use data from record instead from commandline
 def create_book_edition(repo, parent_id, commands):
 
     if ("isbn13" not in commands
@@ -638,6 +647,7 @@ def create_book_edition(repo, parent_id, commands):
 
     return newitem
 
+# todo: use data from record instead from commandline
 def add_book_properties(repo, wditem, commands):
 
     # finna id
