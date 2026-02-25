@@ -37,6 +37,7 @@ class FinnaRecord:
         #self.releaseyear = None
         #self.languagecode = None
         #self.origlangcode = None
+        self.title = dict() # map language to name
 
     # simple checks if received record could be usable
     def isFinnaRecordOk(self):
@@ -732,6 +733,9 @@ def add_film(commands, finnarecord = None):
     #create item
     newitem = pywikibot.ItemPage(repo)
     
+    #if (finnarecord != None):
+        # in case there are names for different languages defined try to use those
+    
     film_title = commands["title"]
     
     #desc_en = "film by " + directorlabel
@@ -784,6 +788,10 @@ def add_film_from_elonet(finnaid):
         return None
 
     print("Got finna record:", fr.getFinnaIdFromRecord())
+
+    if (fr.isfilm() == False):
+        print("Not as supported film record with id:", fr.finnaid)
+        return None
     
     fr.parseFullRecord()
     

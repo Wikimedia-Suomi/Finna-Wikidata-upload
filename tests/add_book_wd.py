@@ -861,6 +861,10 @@ def add_book_from_finna(finnaid):
         return None
 
     print("Got finna record:", fr.getFinnaIdFromRecord())
+
+    if (fr.isbook() == False):
+        print("Not as supported book record with id:", fr.finnaid)
+        return None
     
     fr.parseFullRecord()
     

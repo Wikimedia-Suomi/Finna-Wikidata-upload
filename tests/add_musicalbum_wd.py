@@ -701,11 +701,16 @@ def add_album(commands, finnarecord = None):
     wdsite.login()
 
     repo = wdsite.data_repository()
+    
+    album_name = ""
+    if (finnarecord != None):
+        album_name = finnarecord.getTitleFromFinna()
+    elif "album" in commands:
+        album_name = commands["album"]
 
-    if "album" not in commands:
+    if (len(album_name) == 0):
         print('WARN: cannot create, album name missing')
         return None
-    album_name = commands["album"]
     
     # just check given parameter makes sense
     artistlabel = check_artist(repo, commands)
@@ -770,6 +775,10 @@ def add_album_from_finna(finnaid):
         return None
 
     print("Got finna record:", fr.getFinnaIdFromRecord())
+    
+    if (fr.isalbum() == False):
+        print("Not as supported album record with id:", fr.finnaid)
+        return None
     
     fr.parseFullRecord()
     
