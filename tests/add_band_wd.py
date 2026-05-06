@@ -193,18 +193,19 @@ def add_item_value(repo, wditem, prop, value):
     wditem.addClaim(claim)#, summary='Adding 1 claim')
 
 
-# todo: test this
-def add_item_source(repo, p_claim, commands):
+# todo: other possible parameters
+def add_item_source_url(repo, p_claim, commands):
     if "source" not in commands:
         return 
 
-    prop = 'P854'
+    prop = 'P854' # source-url
     sourceurl = commands['source']
    
     u_claim = pywikibot.Claim(repo, prop, is_reference=True, is_qualifier=False)
     u_claim.setTarget(sourceurl)
     p_claim.addSource(u_claim)
 
+# todo: other sources to use? -> must have other related properties and qualifiers..
 
 def add_band_properties(repo, wditem, commands):
     # instance of
@@ -254,12 +255,26 @@ def add_band_properties(repo, wditem, commands):
             claim.setTarget(target)
 
             # add source (if any)
-            add_item_source(repo, claim, commands)
+            add_item_source_url(repo, claim, commands)
             
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
     # työskentelyajan alku (P2031)
-    # getwbdate()..
+    if not 'P2031' in wditem.claims:
+        if "year" in commands:
+            start = commands["year"]
+
+            # only year now
+            wbdate = getwbdate(int(start))
+            
+            print("Adding claim: start of work")
+            claim = pywikibot.Claim(repo, 'P2031')
+            claim.setTarget(wbdate)
+
+            # add source (if any)
+            add_item_source_url(repo, claim, commands)
+            
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
 
     # muita?
     # luomisajankohta (P571), perustamisajankohta (Q3406134)
@@ -305,10 +320,11 @@ def add_band(commands, finnarecord = None):
 support_args = [
                 "artist",
                 "country",
+                "year",
                 "genre",
                 "discogs",
                 "metalarchives",
-                "source",
+                "source"
                 ]
 
 # TODO: check name to qcode mapping validity while parsing?

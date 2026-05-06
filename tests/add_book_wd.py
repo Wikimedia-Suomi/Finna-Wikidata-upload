@@ -1,4 +1,4 @@
-# Script creates wikidata item for last name.
+# Script creates wikidata item for a book/literary work.
 #
 # Usage:
 # python3 
@@ -576,6 +576,21 @@ def add_item_value(repo, wditem, prop, value):
     claim.setTarget(value)
     wditem.addClaim(claim)#, summary='Adding 1 claim')
 
+# todo: other possible parameters
+def add_item_source_url(repo, p_claim, commands):
+    if "source" not in commands:
+        return 
+
+    prop = 'P854' # source-url
+    sourceurl = commands['source']
+   
+    u_claim = pywikibot.Claim(repo, prop, is_reference=True, is_qualifier=False)
+    u_claim.setTarget(sourceurl)
+    p_claim.addSource(u_claim)
+
+# todo: other sources to use? -> must have other related properties and qualifiers..
+
+
 # book edition: painos, laitos tai käännös
 # todo: use data from record instead from commandline
 def create_book_edition(repo, parent_id, commands):
@@ -887,7 +902,8 @@ support_args = ["title",
                 "country",
                 "language",
                 "isbn13",
-                "isbn10"]
+                "isbn10",
+                "source"]
 
 # TODO: check name to qcode mapping validity while parsing?
 #
