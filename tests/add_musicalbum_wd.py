@@ -450,6 +450,25 @@ def getartistqcode(commands):
     return ""
 
 # todo: read config for mapping
+def gettypeqcode(commands):
+
+    # mapping type to qcode
+    d_typetoqcode = dict()
+    d_typetoqcode["studioalbumi"] = "Q208569"
+    d_typetoqcode["livealbumi"] = "Q209939"
+    d_typetoqcode["kokoelma-albumi"] = "Q222910"
+    d_typetoqcode["soundtrack-albumi"] = "Q4176708"
+
+    if "type" not in commands:
+        return ""
+
+    reltype = commands["type"]
+    if reltype in d_typetoqcode:
+        return d_typetoqcode[reltype]
+    return ""
+
+
+# todo: read config for mapping
 def getgenreqcode(commands):
 
     # mapping genre to qcode
@@ -476,6 +495,9 @@ def getlabelqcode(commands):
     d_labeltoqcode["Napalm Records"] = "Q693194"
     d_labeltoqcode["Century Media Records"] = "Q158867"
     d_labeltoqcode["Spikefarm Records"] = "Q51794339"
+    d_labeltoqcode["Naturmacht Productions"] = "Q73783815"
+    d_labeltoqcode["Avantgarde Music"] = "Q790187"
+    d_labeltoqcode["Rockshots Records"] = "Q117885298"
     
     if "muslabel" not in commands:
         return ""
@@ -635,6 +657,9 @@ def add_album_properties(repo, wditem, commands):
             claim = pywikibot.Claim(repo, 'P577')
             #target = pywikibot.ItemPage(repo, released) 
             claim.setTarget(wbdate)
+            
+            add_item_source_url(repo, claim, commands)
+            
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
     # genre
@@ -648,6 +673,27 @@ def add_album_properties(repo, wditem, commands):
             claim.setTarget(target)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
+    # levymerkki (P264)
+    if not 'P264' in wditem.claims:
+        labelqcode = getlabelqcode(commands)
+        if (labelqcode != ""):
+        
+            print("Adding claim: record label")
+            claim = pywikibot.Claim(repo, 'P264')
+            target = pywikibot.ItemPage(repo, labelqcode) 
+            claim.setTarget(target)
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
+
+    # teoksen tyyppi (P7937)
+    if not 'P7937' in wditem.claims:
+        typeqcode = gettypeqcode(commands)
+        if (typeqcode != ""):
+        
+            print("Adding claim: type")
+            claim = pywikibot.Claim(repo, 'P7937')
+            target = pywikibot.ItemPage(repo, typeqcode) 
+            claim.setTarget(target)
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
 
 def check_artist(repo, commands, lang='fi'):
     
@@ -809,6 +855,7 @@ support_args = ["album",
                 "artistqid",
                 "muslabel",
                 "genre",
+                "type",
                 "discogsmaster",
                 "discogsrelease",
                 "metalarchives",
@@ -848,6 +895,10 @@ def parse_command_pars(argv):
         if (key == "genre"):
             if (getgenreqcode(commands) == ""):
                 print("WARN: no qcode for genre", commands["genre"])
+                exit()
+        if (key == "type"):
+            if (gettypeqcode(commands) == ""):
+                print("WARN: no qcode for type", commands["type"])
                 exit()
 
     return commands
