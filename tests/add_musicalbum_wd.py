@@ -606,18 +606,19 @@ def add_album_properties(repo, wditem, commands):
 
     # esittäjä
     if not 'P282' in wditem.claims:
-        artist_qcode = getartistqcode(commands)
+        
+        artist_qcode = ""
+        if "artistqid" in commands:
+            artist_qcode = commands["artistqid"]
+
+        if (artist_qcode == ""):
+            artist_qcode = getartistqcode(commands)
+        
         if (artist_qcode != ""):
             
             print("Adding claim: artist")
             claim = pywikibot.Claim(repo, 'P175')
             target = pywikibot.ItemPage(repo, artist_qcode) 
-            claim.setTarget(target)
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
-        if "artistqid" in commands:
-            print("Adding claim: artist")
-            claim = pywikibot.Claim(repo, 'P175')
-            target = pywikibot.ItemPage(repo, commands["artistqid"]) 
             claim.setTarget(target)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
         
@@ -675,7 +676,14 @@ def add_album_properties(repo, wditem, commands):
 
     # levymerkki (P264)
     if not 'P264' in wditem.claims:
-        labelqcode = getlabelqcode(commands)
+        
+        labelqcode = ""
+        if "muslabelqid" in commands:
+            labelqcode = commands["muslabelqid"]
+
+        if (labelqcode == ""):
+            labelqcode = getlabelqcode(commands)
+
         if (labelqcode != ""):
         
             print("Adding claim: record label")
@@ -683,6 +691,7 @@ def add_album_properties(repo, wditem, commands):
             target = pywikibot.ItemPage(repo, labelqcode) 
             claim.setTarget(target)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
+
 
     # teoksen tyyppi (P7937)
     if not 'P7937' in wditem.claims:
@@ -854,6 +863,7 @@ support_args = ["album",
                 "artist",
                 "artistqid",
                 "muslabel",
+                "muslabelqid",
                 "genre",
                 "type",
                 "discogsmaster",
