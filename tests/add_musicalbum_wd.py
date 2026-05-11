@@ -559,6 +559,15 @@ def isBandItem(item):
         
     return False
 
+def isAlbumItem(item):
+    instance_of = item.claims.get('P31', [])
+    for claim in instance_of:
+        
+        if (claim.getTarget().id == 'Q482994'):
+            return True
+        
+    return False
+
 def getArtistsFromItem(item):
     qlist = list()
     part_of = item.claims.get('P282', [])
@@ -856,6 +865,9 @@ def add_album(commands, finnarecord = None):
         album_item = create_album_item(repo, album_name, artistlabel, releaseyear)
     else:
         album_item = getitembyqcode(repo, albumqid)
+        if (isAlbumItem(album_item) == False):
+            print('WARN: qid is for album', albumqid)
+            return None
         
     print('Adding properties...')
     add_album_properties(repo, album_item, commands)
