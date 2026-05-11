@@ -106,6 +106,9 @@ def getlabelqcode(commands):
     d_labeltoqcode["Napalm Records"] = "Q693194"
     d_labeltoqcode["Century Media Records"] = "Q158867"
     d_labeltoqcode["Spikefarm Records"] = "Q51794339"
+    d_labeltoqcode["Naturmacht Productions"] = "Q73783815"
+    d_labeltoqcode["Avantgarde Music"] = "Q790187"
+    d_labeltoqcode["Rockshots Records"] = "Q117885298"
     
     if "muslabel" not in commands:
         return ""
@@ -166,7 +169,11 @@ def isBandItem(item):
     instance_of = item.claims.get('P31', [])
     for claim in instance_of:
         
+        # band
         if (claim.getTarget().id == 'Q215380'):
+            return True
+        # metal band
+        if (claim.getTarget().id == 'Q56816954'):
             return True
         
     return False
@@ -208,6 +215,7 @@ def add_item_source_url(repo, p_claim, commands):
 # todo: other sources to use? -> must have other related properties and qualifiers..
 
 def add_band_properties(repo, wditem, commands):
+
     # instance of
     if not 'P31' in wditem.claims:
         print("Adding claim: instance of band")
@@ -215,7 +223,6 @@ def add_band_properties(repo, wditem, commands):
         target = pywikibot.ItemPage(repo, 'Q215380') # band
         claim.setTarget(target)
         wditem.addClaim(claim)#, summary='Adding 1 claim')
-
         
     # discogs artist
     if not 'P1953' in wditem.claims:
@@ -276,27 +283,59 @@ def add_band_properties(repo, wditem, commands):
             
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
-    # muita?
-    # luomisajankohta (P571), perustamisajankohta (Q3406134)
+    # työskentelyajan loppu (P2032)
+    if not 'P2032' in wditem.claims:
+        if "year" in commands:
+            end = commands["endyear"]
+
+            # only year now
+            wbdate = getwbdate(int(end))
+            
+            print("Adding claim: end of work")
+            claim = pywikibot.Claim(repo, 'P2032')
+            claim.setTarget(wbdate)
+
+            # add source (if any)
+            add_item_source_url(repo, claim, commands)
+            
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
+
+
+    # levymerkki (P264)
+    if not 'P264' in wditem.claims:
+
+        labelqcode = ""
+        if "muslabelqid" in commands:
+            labelqcode = commands["muslabelqid"]
+
+        if (labelqcode == ""):
+            labelqcode = getlabelqcode(commands)
+        
+        if (labelqcode != ""):
+        
+            print("Adding claim: record label")
+            claim = pywikibot.Claim(repo, 'P264')
+            target = pywikibot.ItemPage(repo, labelqcode) 
+            claim.setTarget(target)
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
+
+    # perustamispaikka (P740)
     
-
-
-def add_band(commands, finnarecord = None):
-
-    wdsite = pywikibot.Site('wikidata', 'wikidata')
-    wdsite.login()
-
-    repo = wdsite.data_repository()
+    # koostuu osista (P527), luettelo jäsenistä (qid)
     
-    artistlabel = commands["artist"]
-    if (artistlabel == ""):
-        print('WARN: cannot create, artist unknown')
-        return None
+    # artistin MusicBrainz-tunniste (P434)
+    if not 'P434' in wditem.claims:
+        if "musicbrainz" in commands:
+            mbrainz = commands["musicbrainz"]
+            
+            print("Adding claim: musicbrainz artist")
+            add_item_value(repo, wditem, 'P434', mbrainz)
 
-    
+
+def create_band_item(repo, artistlabel):
+
     data = {"labels": {"en": artistlabel, "fi": artistlabel, "sv": artistlabel, "fr": artistlabel, "mul": artistlabel}}
     #"descriptions": {"en": album_desc_en, "sv": album_desc_sv, "fr": album_desc_fr}}
-
 
     print('Creating a new band item for', artistlabel)
 
@@ -305,25 +344,57 @@ def add_band(commands, finnarecord = None):
     
     newitem.editEntity(data, summary=u'Edited item: set labels, descriptions')
 
+    # reload, ensure it is created
+    # can we skip this and leave to later?
     newitem.get()
+    return newitem
+
+def add_band(commands, finnarecord = None):
+
+    wdsite = pywikibot.Site('wikidata', 'wikidata')
+    wdsite.login()
+
+    repo = wdsite.data_repository()
+
+    artistlabel = ""
+    artistqcode = ""
+    if "artist" in commands:
+        artistlabel = commands['artist']
+    if "artistqid" in commands:
+        artistqcode = commands['artistqid']
+    
+    if (len(artistlabel) == 0 and len(artistqcode) == 0):
+        print('WARN: cannot create, artist unknown and no qcode')
+        return None
+
+    artist_item = {}
+    if (len(artistqcode) == 0):
+        artist_item = create_band_item(repo, artistlabel)
+    else:
+        artist_item = getitembyqcode(repo, artistqcode)
+        if (isBandItem(artist_item) == False):
+            print('WARN: qid is not for artist', isBandItem)
+            return None
 
     print('Adding properties...')
+    add_band_properties(repo, artist_item, commands)
 
-    add_band_properties(repo, newitem, commands)
-
-    nid = newitem.getID()
+    nid = artist_item.getID()
     print('All done', nid)
     return nid
 
 
-
 support_args = [
                 "artist",
+                "artistqid",
                 "country",
                 "year",
                 "genre",
+                "muslabel",
+                "muslabelqid",
                 "discogs",
                 "metalarchives",
+                "musicbrainz",
                 "source"
                 ]
 
