@@ -25,9 +25,9 @@ import xml.etree.ElementTree as XEltree
 
 class FinnaRecord:
     def __init__(self):
-        self.finnaid = ""
-        self.sourceref = None
-        self.finnarecord = None
+        self.finnaid = "" # id used in query
+        self.sourceref = None # url of metapage
+        self.finnarecord = None # json data
         
         self.albumtitle = None
         self.artistname = None
@@ -78,6 +78,17 @@ class FinnaRecord:
 
         print("DBEUG: found id in finna record: ", finna_id)
         return finna_id
+    
+    # record page (metadata page) path without domain
+    def getRecordPage(self):
+        records = self.finnarecord['records'][0]
+        if "recordPage" not in records:
+            print("WARN: no recordPage in finna record ")
+            return ""
+
+        # should be /Record.. without domain
+        recordpage = records['recordPage']
+        return recordpage
 
     # get accession number / identifier string from finna
     def getFinnaAccessionIdentifier(self):
@@ -117,6 +128,23 @@ class FinnaRecord:
         
         if "formats" not in records:
             return False
+        
+        f_formats = records['formats']
+        for fmt in f_formats:
+            ff_value = fmt['value'].strip()
+            ff_translated = fmt['translated'].strip()
+
+            print("DBEUG: format in record: ", ff_value, " - ", ff_translated)
+            
+            if (ff_value == "0/Sound/"):
+                return True
+            if (ff_translated == "Sound"):
+                return True
+            if (ff_value == "1/Sound/CD/"):
+                return True
+            if (ff_translated == "CD"):
+                return True
+
 
         # is there more generic "album" to check ?
         #f_type = records['formats']['value'] # 0/Sound/ or 1/Sound/CD/
@@ -159,7 +187,7 @@ class FinnaRecord:
         # should be a plain number..
         iyear = int(f_year)
         if (iyear < 1800 or iyear > 2100):
-            # not usable as an album
+            # not usable as a year
             return ""
         
         # validate it is a date, decade or year?
@@ -422,7 +450,7 @@ def checkproperties(repo, itemqcode):
     return True
 
 # todo: read config for mapping
-def getartistqcode(commands):
+def getartistqcode(artistname):
 
     # mapping name to artist qcode
     d_artisttoqcode = dict()
@@ -435,16 +463,10 @@ def getartistqcode(commands):
     d_artisttoqcode["Suotana"] = "Q53789374"
     d_artisttoqcode["Halavatun papat"] = "Q11861186"
     
-    if "artist" not in commands:
-        print("no artist in commands")
-        return ""
-    
-    artist = commands["artist"]
-
     print("looking fo artist", artist)
     
-    if artist in d_artisttoqcode:
-        return d_artisttoqcode[artist]
+    if artistname in d_artisttoqcode:
+        return d_artisttoqcode[artistname]
 
     print("artist not found", d_artisttoqcode)
     return ""
@@ -487,7 +509,7 @@ def getgenreqcode(commands):
     return ""
 
 # todo: read config for mapping
-def getlabelqcode(commands):
+def getlabelqcode(muslabel):
 
     # mapping label to qcode
     d_labeltoqcode = dict()
@@ -498,13 +520,10 @@ def getlabelqcode(commands):
     d_labeltoqcode["Naturmacht Productions"] = "Q73783815"
     d_labeltoqcode["Avantgarde Music"] = "Q790187"
     d_labeltoqcode["Rockshots Records"] = "Q117885298"
+    d_labeltoqcode["Warner Music Finland"] = "Q10831860"
     
-    if "muslabel" not in commands:
-        return ""
-
-    lbl = commands["muslabel"]
-    if lbl in d_labeltoqcode:
-        return d_labeltoqcode[lbl]
+    if muslabel in d_labeltoqcode:
+        return d_labeltoqcode[muslabel]
     return ""
 
 # todo: read config for mapping?
@@ -528,7 +547,7 @@ def getcountryqcode(commands):
 # todo: read config for mapping?
 # don't need many so might as well hard-code?
 # language of album
-def getlanguageqcode(commands):
+def getlanguageqcode(lang):
 
     # mapping language to qcode
     d_langqcode = dict()
@@ -541,14 +560,30 @@ def getlanguageqcode(commands):
     d_langqcode["ranska"] = "Q150"
     d_langqcode["fra"] = "Q150" # langcode
     
-    
-    if "language" not in commands:
-        return ""
-
-    lq = commands["language"]
-    if lq in d_langqcode:
-        return d_langqcode[lq]
+    if lang in d_langqcode:
+        return d_langqcode[lang]
     return ""
+
+# get qcode for artist by name from finna:
+# this might need some extra mapping 
+# since there may be multiple people with same name
+#
+def get_finna_artist_qcode(finnarecord):
+    # TODO: add mapping for getting qcode by finna artist name,
+    # otherwise it must be given as command separately
+    if (finnarecord == None):
+        return ""
+    if (finnarecord.artistname == None):
+        return ""
+    return getartistqcode(finnarecord.artistname)
+
+def get_finna_label_qcode(finnarecord):
+    if (finnarecord == None):
+        return ""
+    if (finnarecord.publishername == None):
+        return ""
+    return getlabelqcode(finnarecord.publishername)
+
 
 def isArtistItem(item):
     instance_of = item.claims.get('P31', [])
@@ -601,12 +636,19 @@ def add_item_value(repo, wditem, prop, value):
     wditem.addClaim(claim)#, summary='Adding 1 claim')
 
 # todo: other possible parameters
-def add_item_source_url(repo, p_claim, commands):
-    if "source" not in commands:
-        return 
+def add_item_source_url(repo, p_claim, commands, finnarecord = None):
+    
+    sourceurl = ""
+    if (finnarecord != None):
+        sourceurl = finnarecord.sourceref
+
+    if "source" in commands and sourceurl == "":
+        sourceurl = commands['source']
+        
+    if (sourceurl == ""):
+        return None
 
     prop = 'P854' # source-url
-    sourceurl = commands['source']
    
     u_claim = pywikibot.Claim(repo, prop, is_reference=True, is_qualifier=False)
     u_claim.setTarget(sourceurl)
@@ -616,7 +658,8 @@ def add_item_source_url(repo, p_claim, commands):
 
 
 # todo: use data from record instead from commandline
-def add_album_properties(repo, wditem, commands):
+def add_album_properties(repo, wditem, commands, finnarecord = None):
+    
     # instance of
     if not 'P31' in wditem.claims:
         print("Adding claim: instance of album")
@@ -628,12 +671,15 @@ def add_album_properties(repo, wditem, commands):
     # esittäjä
     if not 'P175' in wditem.claims:
         
-        artist_qcode = ""
-        if "artistqid" in commands:
+        # if finna record is given, try to find by name
+        artist_qcode = get_finna_artist_qcode(finnarecord)
+        if artist_qcode == "" and "artistqid" in commands:
+            # fallback to qid in commands
             artist_qcode = commands["artistqid"]
 
-        if (artist_qcode == ""):
-            artist_qcode = getartistqcode(commands)
+        # further fallback if name is given in commands (deprecated)
+        if "artist" in commands and artist_qcode == "":
+            artist_qcode = getartistqcode(commands["artist"])
         
         if (artist_qcode != ""):
             
@@ -643,44 +689,25 @@ def add_album_properties(repo, wditem, commands):
             claim.setTarget(target)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
         
-    # discogs master
-    if not 'P1954' in wditem.claims:
-        if "discogsmaster" in commands:
-            discogs = commands["discogsmaster"]
-            
-            print("Adding claim: discogs master")
-            add_item_value(repo, wditem, 'P1954', discogs)
-
-    if not 'P2206' in wditem.claims:
-        if "discogsrelease" in commands:
-            discogs = commands["discogsrelease"]
-            
-            print("Adding claim: discogs release")
-            add_item_value(repo, wditem, 'P2206', discogs)
-
-
-    # metal archives release
-    if not 'P2721' in wditem.claims:
-        if "metalarchives" in commands:
-            metalarc = commands["metalarchives"]
-            
-            print("Adding claim: metal archives release")
-            add_item_value(repo, wditem, 'P2721', metalarc)
-
     # release date (date formatting?)
     if not 'P577' in wditem.claims:
-        if "release" in commands:
-            released = commands["release"]
+        releaseyear = ""
+        if (finnarecord != None):
+            releaseyear = finnarecord.getyear()
+        
+        if "released" in commands and releaseyear == "":
+            releaseyear = commands["released"]
 
+        if (releaseyear != ""):
             # only year now
-            wbdate = getwbdate(int(released))
+            wbdate = getwbdate(int(releaseyear))
             
             print("Adding claim: released in")
             claim = pywikibot.Claim(repo, 'P577')
             #target = pywikibot.ItemPage(repo, released) 
             claim.setTarget(wbdate)
             
-            add_item_source_url(repo, claim, commands)
+            add_item_source_url(repo, claim, commands, finnarecord)
             
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
@@ -695,15 +722,38 @@ def add_album_properties(repo, wditem, commands):
             claim.setTarget(target)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
+    # kieli
+    if not 'P407' in wditem.claims:
+        
+        albumlangs = None
+        if (finnarecord != None):
+            # may be a list
+            albumlangs = finnarecord.getlang()
+
+        if "language" in commands and albumlangs == None:
+            albumlangs = list()
+            albumlangs.append(commands["language"])
+
+        for l in albumlangs:
+            langqcode = getlanguageqcode(l)
+            print("Adding claim: language for ", l)
+            add_item_link(repo, wditem, 'P407', langqcode)
+        
+
     # levymerkki (P264)
     if not 'P264' in wditem.claims:
         
-        labelqcode = ""
-        if "muslabelqid" in commands:
+        # note: might have multiple publishers..
+        
+        # try to fetch qcode by name from record
+        labelqcode = get_finna_label_qcode(finnarecord)
+        if labelqcode == "" and "muslabelqid" in commands:
+            # fallback if qcode is given in commands
             labelqcode = commands["muslabelqid"]
 
-        if (labelqcode == ""):
-            labelqcode = getlabelqcode(commands)
+        # if name is given in commands (deprecated)
+        if labelqcode == "" and "muslabel" in commands:
+            labelqcode = getlabelqcode(commands["muslabel"])
 
         if (labelqcode != ""):
         
@@ -711,6 +761,9 @@ def add_album_properties(repo, wditem, commands):
             claim = pywikibot.Claim(repo, 'P264')
             target = pywikibot.ItemPage(repo, labelqcode) 
             claim.setTarget(target)
+
+            add_item_source_url(repo, claim, commands, finnarecord)
+            
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
 
@@ -742,6 +795,30 @@ def add_album_properties(repo, wditem, commands):
             claim.setTarget(target)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
+    # discogs master
+    if not 'P1954' in wditem.claims:
+        if "discogsmaster" in commands:
+            discogs = commands["discogsmaster"]
+            
+            print("Adding claim: discogs master")
+            add_item_value(repo, wditem, 'P1954', discogs)
+
+    if not 'P2206' in wditem.claims:
+        if "discogsrelease" in commands:
+            discogs = commands["discogsrelease"]
+            
+            print("Adding claim: discogs release")
+            add_item_value(repo, wditem, 'P2206', discogs)
+
+
+    # metal archives release
+    if not 'P2721' in wditem.claims:
+        if "metalarchives" in commands:
+            metalarc = commands["metalarchives"]
+            
+            print("Adding claim: metal archives release")
+            add_item_value(repo, wditem, 'P2721', metalarc)
+
 
     # julkaisun MusicBrainz-tunniste (P5813)
     # äänitteen MusicBrainz-tunniste (P4404)
@@ -756,13 +833,22 @@ def add_album_properties(repo, wditem, commands):
             add_item_value(repo, wditem, 'P436', mbgroup)
 
 
-def check_artist(repo, commands, lang='fi'):
-    
-    if "artistqid" in commands and "artist" not in commands:
-        qcode = commands["artistqid"]
-        item = getitembyqcode(repo, qcode)
+def check_artist(repo, commands, lang='fi', finnarecord = None):
+
+    # try to find qcode by name from finna
+    artistqcode = get_finna_artist_qcode(finnarecord)
+    if artistqcode == "" and "artistqid" in commands:
+        # fallback if qcode is given in commands
+        artistqcode = commands["artistqid"]
+
+    # if name is given in commands (deprecated)
+    if artistqcode == "" and "artist" in commands:
+        artistqcode = getartistqcode(commands["artist"])
+
+    if (len(artistqcode) > 0):
+        item = getitembyqcode(repo, artistqcode)
         if (isArtistItem(item) == False):
-            print('WARN: qid is not for artist', qcode)
+            print('WARN: qid is not for artist', artistqcode)
             return ""
         
         artistlabel = getlabelbylangfromitem(item, lang)
@@ -775,25 +861,8 @@ def check_artist(repo, commands, lang='fi'):
             return ""
         if (artistlabel != ""):
             print("ok, artist name found", artistlabel, " with lang", lang)
-        #if "artist" not in commands and artistlabel != "":
-        #    commands["artist"] = artistlabel
         return artistlabel
 
-    if "artist" in commands and "artistqid" not in commands:
-        artistqcode = getartistqcode(commands)
-        if (artistqcode == ""):
-            print("WARN: no qcode for artist", commands["artist"])
-            return ""
-            
-        artistitem = getitembyqcode(repo, artistqcode)
-        artistlabel = getlabelbylangfromitem(artistitem, lang)
-        if (artistlabel == None):
-            print("WARN: no label with lang", lang)
-            return ""
-        if (artistlabel == commands["artist"]):
-            print("ok, artist name and label in wikidata match", artistlabel)
-        return artistlabel
-    
     print("WARN: given artist name and label in wikidata do not match or not given")
     return ""
 
@@ -876,12 +945,13 @@ def add_album(commands, finnarecord = None):
     repo = wdsite.data_repository()
     
     album_name = ""
-    albumqid = ""
     if (finnarecord != None):
         album_name = finnarecord.getTitleFromFinna()
-    elif "album" in commands:
+    if album_name == "" and "album" in commands:
         album_name = commands["album"]
-        
+
+    # updating existing album?
+    albumqid = ""
     if "albumqid" in commands:
         albumqid = commands['albumqid']
 
@@ -892,7 +962,7 @@ def add_album(commands, finnarecord = None):
     # just check given parameter makes sense,
     # if we are just updating an album this might not be necessary,
     # but we should validate it if we are adding it to an album..
-    artistlabel = check_artist(repo, commands)
+    artistlabel = check_artist(repo, commands, finnarecord)
     if (artistlabel == ""):
         print('WARN: cannot create, artist unknown')
         return None
@@ -902,12 +972,16 @@ def add_album(commands, finnarecord = None):
 
         # more accurate date? parse to year
         releaseyear = ""
-        if "release" in commands:
+        if (finnarecord != None):
+            releaseyear = finnarecord.getyear()
+
+        if "released" in commands and releaseyear == "":
             # only year for now
-            releaseyear = commands["release"]
+            releaseyear = commands["released"]
         
         album_item = create_album_item(repo, album_name, artistlabel, releaseyear)
     else:
+        # update/expand existing item
         album_item = getitembyqcode(repo, albumqid)
         if (isAlbumItem(album_item) == False):
             print('WARN: qid is not for album', albumqid)
@@ -915,15 +989,17 @@ def add_album(commands, finnarecord = None):
 
     # only add given properties
     print('Adding properties...')
-    add_album_properties(repo, album_item, commands)
+    add_album_properties(repo, album_item, commands, finnarecord)
 
     nid = album_item.getID()
     print('All done', nid)
     return nid
 
 
-def add_album_from_finna(finnaid):
-    # TODO: check and parse information in record..
+# check and parse information in record..
+def add_album_from_finna(commands):
+    
+    finnaid = commands["finnaid"]
 
     frsession = requests.Session()
     frsession.headers.update({'User-Agent': 'FinnaUploader 0.3b (https://commons.wikimedia.org/wiki/User:FinnaUploadBot)'}) # noqa
@@ -937,18 +1013,25 @@ def add_album_from_finna(finnaid):
         return None
 
     print("Got finna record:", fr.getFinnaIdFromRecord())
+    #if (fr.getFinnaIdFromRecord() != fr.finnaid):
+    
+    #frpage = ""
+    #frpage = fr.getRecordPage()
+    
+    # keep metapage address
+    frpage = "https://finna.fi/Record/" + finnaid
+    fr.sourceref = frpage
     
     if (fr.isalbum() == False):
-        print("Not as supported album record with id:", fr.finnaid)
+        print("Not a supported album record with id:", fr.finnaid)
         return None
     
+    # TODO: more validation..
     fr.parseFullRecord()
     
-    #wdsite = pywikibot.Site('wikidata', 'wikidata')
-    #wdsite.login()
-    #repo = wdsite.data_repository()
-
-    #add_album(commands, fr):
+    # pass both record and extra commands:
+    # some we can't parse yet..
+    add_album(commands, fr)
 
 
 support_args = ["album",
@@ -958,12 +1041,14 @@ support_args = ["album",
                 "muslabel",
                 "muslabelqid",
                 "genre",
+                "released",
                 "type",
+                "language",
+                "placeqid",
                 "discogsmaster",
                 "discogsrelease",
                 "metalarchives",
                 "mbzgroup",
-                "release",
                 "finnaid",
                 "source"]
 
@@ -989,11 +1074,11 @@ def parse_command_pars(argv):
             commands[key] = val
             
         if (key == "artist"):
-            if (getartistqcode(commands) == ""):
+            if (getartistqcode(commands["artist"]) == ""):
                 print("WARN: no qcode for artist", commands["artist"])
                 exit()
         if (key == "muslabel"):
-            if (getlabelqcode(commands) == ""):
+            if (getlabelqcode(commands["muslabel"]) == ""):
                 print("WARN: no qcode for label", commands["muslabel"])
                 exit()
         if (key == "genre"):
@@ -1038,6 +1123,6 @@ if __name__ == "__main__":
         
         # TODO: parse and print some kind of preview of what will be added
 
-        add_album_from_finna(commands["finnaid"])
+        add_album_from_finna(commands)
         print("all done")
 
