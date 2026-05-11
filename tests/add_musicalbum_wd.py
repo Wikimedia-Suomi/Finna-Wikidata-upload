@@ -550,10 +550,14 @@ def getlanguageqcode(commands):
         return d_langqcode[lq]
     return ""
 
-def isBandItem(item):
+def isArtistItem(item):
     instance_of = item.claims.get('P31', [])
     for claim in instance_of:
-        
+
+        # human
+        if (claim.getTarget().id == 'Q5'):
+            return True
+        # band
         if (claim.getTarget().id == 'Q215380'):
             return True
         
@@ -724,7 +728,7 @@ def check_artist(repo, commands, lang='fi'):
     if "artistqid" in commands and "artist" not in commands:
         qcode = commands["artistqid"]
         item = getitembyqcode(repo, qcode)
-        if (isBandItem(item) == False):
+        if (isArtistItem(item) == False):
             print('WARN: qid is not for artist', qcode)
             return None
         
