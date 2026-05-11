@@ -704,6 +704,12 @@ def add_album_properties(repo, wditem, commands):
             claim.setTarget(target)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
+    # julkaisun MusicBrainz-tunniste (P5813)
+    # julkaisuryhmän MusicBrainz-tunniste (P436)
+    # äänitteen MusicBrainz-tunniste (P4404)
+    # teoksen MusicBrainz-tunniste (P435)
+
+
 def check_artist(repo, commands, lang='fi'):
     
     if "artistqid" in commands and "artist" not in commands:
@@ -712,11 +718,15 @@ def check_artist(repo, commands, lang='fi'):
         artistlabel = getlabelbylangfromitem(item, lang)
         if (artistlabel == None):
             print("WARN: no label with lang", lang)
+            artistlabel = getlabelbylangfromitem(item, 'mul')
+            if (artistlabel != ""):
+                print("found artist name", artistlabel, " with lang 'mul'")
+                return artistlabel
             return ""
         if (artistlabel != ""):
             print("ok, artist name found", artistlabel, " with lang", lang)
-        if "artist" not in commands and artistlabel != "":
-            commands["artist"] = artistlabel
+        #if "artist" not in commands and artistlabel != "":
+        #    commands["artist"] = artistlabel
         return artistlabel
 
     if "artist" in commands and "artistqid" not in commands:
@@ -765,28 +775,7 @@ def check_if_album_exists(repo, commands):
     return False
 
 
-def add_album(commands, finnarecord = None):
-
-    wdsite = pywikibot.Site('wikidata', 'wikidata')
-    wdsite.login()
-
-    repo = wdsite.data_repository()
-    
-    album_name = ""
-    if (finnarecord != None):
-        album_name = finnarecord.getTitleFromFinna()
-    elif "album" in commands:
-        album_name = commands["album"]
-
-    if (len(album_name) == 0):
-        print('WARN: cannot create, album name missing')
-        return None
-    
-    # just check given parameter makes sense
-    artistlabel = check_artist(repo, commands)
-    if (artistlabel == ""):
-        print('WARN: cannot create, artist unknown')
-        return None
+def create_album_item(repo, album_name, artistlabel, release=""):
 
     # album needs artist and album name since there can be 
     # multiple albums from different artists or even same artist
@@ -794,19 +783,23 @@ def add_album(commands, finnarecord = None):
     #    print('Album exists, skipping')
     #    return None
 
+    # TOOD: if we have type == Q208569, 
+    # then use descrption "studio album by..",
+    # also check cases for live albums etc. 
+
     album_desc_en = "album by " + artistlabel
     #album_desc_fi = artistlabel + " albumi"
     album_desc_sv = "album av " + artistlabel
     album_desc_fr = "album de " + artistlabel
 
     # more accurate date? parse to year
-    if "release" in commands:
-        # only year for now
-        year = int(commands["release"])
-        album_desc_en = str(year) + " " + album_desc_en
+    if (len(release) > 0):
+        # only year for now, add support for date
+        year = str(release)
+        album_desc_en = year + " " + album_desc_en
     #    album_desc_fi = album_desc_fi + " vuodelta " + str(year)
-        album_desc_sv = album_desc_sv + " från " + str(year)
-        album_desc_fr = album_desc_fr + " sorti en " + str(year)
+        album_desc_sv = album_desc_sv + " från " + year
+        album_desc_fr = album_desc_fr + " sorti en " + year
     
     data = {"labels": {"en": album_name, "fi": album_name, "sv": album_name, "fr": album_name, "mul": album_name},
     "descriptions": {"en": album_desc_en, "sv": album_desc_sv, "fr": album_desc_fr}}
@@ -819,13 +812,55 @@ def add_album(commands, finnarecord = None):
     
     newitem.editEntity(data, summary=u'Edited item: set labels, descriptions')
 
+    # reload, ensure it is created
+    # can we skip this and leave to later?
     newitem.get()
+    return newitem
 
+
+def add_album(commands, finnarecord = None):
+
+    wdsite = pywikibot.Site('wikidata', 'wikidata')
+    wdsite.login()
+
+    repo = wdsite.data_repository()
+    
+    album_name = ""
+    albumqid = ""
+    if (finnarecord != None):
+        album_name = finnarecord.getTitleFromFinna()
+    elif "album" in commands:
+        album_name = commands["album"]
+        
+    if "albumqid" in commands:
+        albumqid = commands['albumqid']
+
+    if (len(album_name) == 0 and len(albumqid) == 0):
+        print('WARN: cannot create, album name and qid missing')
+        return None
+    
+    # just check given parameter makes sense
+    artistlabel = check_artist(repo, commands)
+    if (artistlabel == ""):
+        print('WARN: cannot create, artist unknown')
+        return None
+
+    # more accurate date? parse to year
+    releaseyear = ""
+    if "release" in commands:
+        # only year for now
+        releaseyear = commands["release"]
+    
+    album_item = {}
+    if (len(albumqid) == 0):
+        album_item = create_album_item(repo, album_name, artistlabel, releaseyear)
+    else:
+        album_item = getitembyqcode(repo, albumqid)
+        
     print('Adding properties...')
+    add_album_properties(repo, album_item, commands)
 
-    add_album_properties(repo, newitem, commands)
-
-    nid = newitem.getID()
+    nid = album_item.getID()
     print('All done', nid)
     return nid
 
@@ -860,6 +895,7 @@ def add_album_from_finna(finnaid):
 
 
 support_args = ["album",
+                "albumqid",
                 "artist",
                 "artistqid",
                 "muslabel",
@@ -869,6 +905,7 @@ support_args = ["album",
                 "discogsmaster",
                 "discogsrelease",
                 "metalarchives",
+                "musicbrainz",
                 "release",
                 "finnaid",
                 "source"]
