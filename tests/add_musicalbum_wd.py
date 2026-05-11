@@ -724,6 +724,10 @@ def check_artist(repo, commands, lang='fi'):
     if "artistqid" in commands and "artist" not in commands:
         qcode = commands["artistqid"]
         item = getitembyqcode(repo, qcode)
+        if (isBandItem(item) == False):
+            print('WARN: qid is not for artist', qcode)
+            return None
+        
         artistlabel = getlabelbylangfromitem(item, lang)
         if (artistlabel == None):
             print("WARN: no label with lang", lang)
@@ -866,7 +870,7 @@ def add_album(commands, finnarecord = None):
     else:
         album_item = getitembyqcode(repo, albumqid)
         if (isAlbumItem(album_item) == False):
-            print('WARN: qid is for album', albumqid)
+            print('WARN: qid is not for album', albumqid)
             return None
         
     print('Adding properties...')
