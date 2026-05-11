@@ -560,6 +560,9 @@ def isArtistItem(item):
         # band
         if (claim.getTarget().id == 'Q215380'):
             return True
+        # metal band
+        if (claim.getTarget().id == 'Q56816954'):
+            return True
         
     return False
 
@@ -730,7 +733,7 @@ def check_artist(repo, commands, lang='fi'):
         item = getitembyqcode(repo, qcode)
         if (isArtistItem(item) == False):
             print('WARN: qid is not for artist', qcode)
-            return None
+            return ""
         
         artistlabel = getlabelbylangfromitem(item, lang)
         if (artistlabel == None):
