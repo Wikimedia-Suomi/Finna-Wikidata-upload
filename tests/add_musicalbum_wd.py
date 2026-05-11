@@ -553,15 +553,20 @@ def getlanguageqcode(commands):
 def isArtistItem(item):
     instance_of = item.claims.get('P31', [])
     for claim in instance_of:
+        
+        qid = claim.getTarget().id
 
         # human
-        if (claim.getTarget().id == 'Q5'):
+        if (qid == 'Q5'):
             return True
         # band
-        if (claim.getTarget().id == 'Q215380'):
+        if (qid == 'Q215380'):
             return True
         # metal band
-        if (claim.getTarget().id == 'Q56816954'):
+        if (qid == 'Q56816954'):
+            return True
+        # rockyhtye (Q5741069)
+        if (qid == 'Q5741069'):
             return True
         
     return False
@@ -621,7 +626,7 @@ def add_album_properties(repo, wditem, commands):
         wditem.addClaim(claim)#, summary='Adding 1 claim')
 
     # esittäjä
-    if not 'P282' in wditem.claims:
+    if not 'P175' in wditem.claims:
         
         artist_qcode = ""
         if "artistqid" in commands:
@@ -720,10 +725,35 @@ def add_album_properties(repo, wditem, commands):
             claim.setTarget(target)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
+    # julkaisupaikka (P291)
+    if not 'P291' in wditem.claims:
+        # from name to qid? 
+        # maailmanlaajuinen (Q13780930)
+
+        placeqcode = ""
+        if "placeqid" in commands:
+            placeqcode = commands["placeqid"]
+
+        if (placeqcode != ""):
+        
+            print("Adding claim: release place")
+            claim = pywikibot.Claim(repo, 'P291')
+            target = pywikibot.ItemPage(repo, placeqcode) 
+            claim.setTarget(target)
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
+
+
     # julkaisun MusicBrainz-tunniste (P5813)
-    # julkaisuryhmän MusicBrainz-tunniste (P436)
     # äänitteen MusicBrainz-tunniste (P4404)
     # teoksen MusicBrainz-tunniste (P435)
+
+    # julkaisuryhmän MusicBrainz-tunniste (P436)
+    if not 'P436' in wditem.claims:
+        if "mbzgroup" in commands:
+            mbgroup = commands["mbzgroup"]
+            
+            print("Adding claim: musicbrainz release group")
+            add_item_value(repo, wditem, 'P436', mbgroup)
 
 
 def check_artist(repo, commands, lang='fi'):
@@ -763,8 +793,8 @@ def check_artist(repo, commands, lang='fi'):
         if (artistlabel == commands["artist"]):
             print("ok, artist name and label in wikidata match", artistlabel)
         return artistlabel
-        
-    print("WARN: given artist name and label in wikidata do not match", artistlabel)
+    
+    print("WARN: given artist name and label in wikidata do not match or not given")
     return ""
 
 
@@ -858,28 +888,32 @@ def add_album(commands, finnarecord = None):
     if (len(album_name) == 0 and len(albumqid) == 0):
         print('WARN: cannot create, album name and qid missing')
         return None
-    
-    # just check given parameter makes sense
+
+    # just check given parameter makes sense,
+    # if we are just updating an album this might not be necessary,
+    # but we should validate it if we are adding it to an album..
     artistlabel = check_artist(repo, commands)
     if (artistlabel == ""):
         print('WARN: cannot create, artist unknown')
         return None
-
-    # more accurate date? parse to year
-    releaseyear = ""
-    if "release" in commands:
-        # only year for now
-        releaseyear = commands["release"]
     
     album_item = {}
     if (len(albumqid) == 0):
+
+        # more accurate date? parse to year
+        releaseyear = ""
+        if "release" in commands:
+            # only year for now
+            releaseyear = commands["release"]
+        
         album_item = create_album_item(repo, album_name, artistlabel, releaseyear)
     else:
         album_item = getitembyqcode(repo, albumqid)
         if (isAlbumItem(album_item) == False):
             print('WARN: qid is not for album', albumqid)
             return None
-        
+
+    # only add given properties
     print('Adding properties...')
     add_album_properties(repo, album_item, commands)
 
@@ -928,7 +962,7 @@ support_args = ["album",
                 "discogsmaster",
                 "discogsrelease",
                 "metalarchives",
-                "musicbrainz",
+                "mbzgroup",
                 "release",
                 "finnaid",
                 "source"]

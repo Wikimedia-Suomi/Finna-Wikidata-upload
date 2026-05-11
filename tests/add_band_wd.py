@@ -168,12 +168,17 @@ def getlanguageqcode(commands):
 def isBandItem(item):
     instance_of = item.claims.get('P31', [])
     for claim in instance_of:
+
+        qid = claim.getTarget().id
         
         # band
-        if (claim.getTarget().id == 'Q215380'):
+        if (qid == 'Q215380'):
             return True
         # metal band
-        if (claim.getTarget().id == 'Q56816954'):
+        if (qid == 'Q56816954'):
+            return True
+        # rockyhtye (Q5741069)
+        if (qid == 'Q5741069'):
             return True
         
     return False
