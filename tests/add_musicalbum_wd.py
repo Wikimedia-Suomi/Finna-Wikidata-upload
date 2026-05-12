@@ -528,6 +528,7 @@ def getlabelqcode(muslabel):
     # mapping label to qcode
     d_labeltoqcode = dict()
     d_labeltoqcode["Nuclear Blast"] = "Q158886"
+    d_labeltoqcode["Nuclear Blast Records"] = "Q158886"
     d_labeltoqcode["Napalm Records"] = "Q693194"
     d_labeltoqcode["Century Media Records"] = "Q158867"
     d_labeltoqcode["Spikefarm Records"] = "Q51794339"
@@ -535,6 +536,8 @@ def getlabelqcode(muslabel):
     d_labeltoqcode["Avantgarde Music"] = "Q790187"
     d_labeltoqcode["Rockshots Records"] = "Q117885298"
     d_labeltoqcode["Warner Music Finland"] = "Q10831860"
+    d_labeltoqcode["Inverse Records"] = "Q23045098"
+    d_labeltoqcode["Candlelight Records"] = "Q852900"
     
     if muslabel in d_labeltoqcode:
         return d_labeltoqcode[muslabel]
@@ -978,6 +981,20 @@ def create_album_item(repo, album_name, artistlabel, release=""):
 def check_and_add_labels(item, wtitle):
 
     modifiedItem = False
+    if (wtitle == "" or wtitle == None):
+        print("no label given, trying english")
+        wtitle = getlabelbylangfromitem(item, 'en')
+    if (wtitle == "" or wtitle == None):
+        print("no label given, trying finnish")
+        wtitle = getlabelbylangfromitem(item, 'fi')
+    if (wtitle == "" or wtitle == None):
+        print("no label given, trying mul")
+        wtitle = getlabelbylangfromitem(item, 'mul')
+
+    if (wtitle == "" or wtitle == None):
+        print("no label found for item")
+        return False
+
 
     #if "fi" in item.labels:
     #    label = item.labels["fi"]
@@ -1054,8 +1071,7 @@ def add_album(commands, finnarecord = None):
         if (isAlbumItem(album_item) == False):
             print('WARN: qid is not for album', albumqid)
             return None
-        if (album_name != ""):
-            check_and_add_labels(album_item, album_name)
+        check_and_add_labels(album_item, album_name)
 
     # only add given properties
     print('Adding properties...')

@@ -129,7 +129,7 @@ def getcountryqcode(commands):
     d_countryqcode["Suomi"] = "Q33"
     d_countryqcode["Italia"] = "Q38"
     d_countryqcode["Chile"] = "Q298"
-    
+    d_countryqcode["Kreikka"] = "Q41"
 
     if "country" not in commands:
         return ""
@@ -290,7 +290,7 @@ def add_band_properties(repo, wditem, commands):
 
     # työskentelyajan loppu (P2032)
     if not 'P2032' in wditem.claims:
-        if "year" in commands:
+        if "endyear" in commands:
             end = commands["endyear"]
 
             # only year now
