@@ -761,14 +761,15 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
             albumlangs = list()
             albumlangs.append(commands["language"])
 
-        for l in albumlangs:
-            langqcode = getlanguageqcode(l)
-            if (langqcode != ""):
-                print("Adding claim: language for ", l)
-                langclaim = add_item_link(repo, wditem, 'P407', langqcode)
+        if albumlangs:
+            for l in albumlangs:
+                langqcode = getlanguageqcode(l)
+                if (langqcode != ""):
+                    print("Adding claim: language for ", l)
+                    langclaim = add_item_link(repo, wditem, 'P407', langqcode)
 
-                # add source if given
-                add_item_source_url(repo, langclaim, commands, finnarecord)
+                    # add source if given
+                    add_item_source_url(repo, langclaim, commands, finnarecord)
         
 
     # levymerkki (P264)
@@ -864,7 +865,7 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
             add_item_value(repo, wditem, 'P436', mbgroup)
 
 
-def check_artist(repo, commands, lang='fi', finnarecord = None):
+def check_artist(repo, commands, finnarecord = None, lang='fi'):
 
     # try to find qcode by name from finna
     artistqcode = get_finna_artist_qcode(finnarecord)
@@ -880,22 +881,22 @@ def check_artist(repo, commands, lang='fi', finnarecord = None):
         item = getitembyqcode(repo, artistqcode)
         if (isArtistItem(item) == False):
             print('WARN: qid is not for artist', artistqcode)
-            return ""
+            return None
         
         artistlabel = getlabelbylangfromitem(item, lang)
         if (artistlabel == None):
             print("WARN: no label with lang", lang)
             artistlabel = getlabelbylangfromitem(item, 'mul')
-            if (artistlabel != ""):
-                print("found artist name", artistlabel, " with lang 'mul'")
-                return artistlabel
-            return ""
-        if (artistlabel != ""):
-            print("ok, artist name found", artistlabel, " with lang", lang)
+            if (artistlabel == None):
+                print("WARN: no label with lang mul")
+                return None
+            print("found artist name", artistlabel, " with lang 'mul'")
+            return artistlabel
+        print("ok, artist name found", artistlabel, " with lang", lang)
         return artistlabel
 
     print("WARN: given artist name and label in wikidata do not match or not given")
-    return ""
+    return None
 
 
 # there is no easy way to do this: album by same name can exist for different artists
@@ -926,6 +927,11 @@ def check_if_album_exists(repo, commands):
 
 
 def create_album_item(repo, album_name, artistlabel, release=""):
+
+    if (album_name == None):
+        return None
+    if (artistlabel == None):
+        return None
 
     # album needs artist and album name since there can be 
     # multiple albums from different artists or even same artist
@@ -967,6 +973,37 @@ def create_album_item(repo, album_name, artistlabel, release=""):
     newitem.get()
     return newitem
 
+# check there is at least mul label if fr/sv/en/fi is missing:
+# label could be copied but reduction in copies might be better
+def check_and_add_labels(item, wtitle):
+
+    modifiedItem = False
+
+    #if "fi" in item.labels:
+    #    label = item.labels["fi"]
+    #    if (label != wtitle):
+            # finnish label does not match -> wrong item?
+    #        return False;
+        
+    # finnish label is not set -> don't modify (avoid mistakes)
+    #if "fi" not in item.labels:
+    #    return False;
+
+    # start with supported languages
+    copy_labels = {}
+    #supportedLabels = "en", "fi", "sv", "fr", "it", "de", "es", "pt", "nl", "da", "nb", "nn", "et", "pl"
+    supportedLabels = "en", "fi", "mul"
+    for lang in supportedLabels:
+        if lang not in item.labels:
+            # example: "fi": "Virtanen"
+            copy_labels[lang] = wtitle
+    if (len(copy_labels) > 0):
+        item.editLabels(labels=copy_labels, summary="Adding missing labels.")
+        modifiedItem = True
+
+    if (modifiedItem == True):
+        item.get()
+    return modifiedItem
 
 def add_album(commands, finnarecord = None):
 
@@ -994,7 +1031,7 @@ def add_album(commands, finnarecord = None):
     # if we are just updating an album this might not be necessary,
     # but we should validate it if we are adding it to an album..
     artistlabel = check_artist(repo, commands, finnarecord)
-    if (artistlabel == ""):
+    if (artistlabel == None or artistlabel == ""):
         print('WARN: cannot create, artist unknown')
         return None
     
@@ -1017,6 +1054,8 @@ def add_album(commands, finnarecord = None):
         if (isAlbumItem(album_item) == False):
             print('WARN: qid is not for album', albumqid)
             return None
+        if (album_name != ""):
+            check_and_add_labels(album_item, album_name)
 
     # only add given properties
     print('Adding properties...')
@@ -1049,7 +1088,8 @@ def add_album_from_finna(commands):
     #frpage = ""
     #frpage = fr.getRecordPage()
     
-    # keep metapage address
+    # keep metapage address:
+    # could use kansalliskirjasto.finna.fi ?
     frpage = "https://finna.fi/Record/" + finnaid
     fr.sourceref = frpage
     

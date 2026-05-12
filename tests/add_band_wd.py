@@ -354,6 +354,40 @@ def create_band_item(repo, artistlabel):
     newitem.get()
     return newitem
 
+
+# check there is at least mul label if fr/sv/en/fi is missing:
+# label could be copied but reduction in copies might be better
+def check_and_add_labels(item, wtitle):
+
+    modifiedItem = False
+
+    #if "fi" in item.labels:
+    #    label = item.labels["fi"]
+    #    if (label != wtitle):
+            # finnish label does not match -> wrong item?
+    #        return False;
+        
+    # finnish label is not set -> don't modify (avoid mistakes)
+    #if "fi" not in item.labels:
+    #    return False;
+
+    # start with supported languages
+    copy_labels = {}
+    #supportedLabels = "en", "fi", "sv", "fr", "it", "de", "es", "pt", "nl", "da", "nb", "nn", "et", "pl"
+    supportedLabels = "en", "fi", "mul"
+    for lang in supportedLabels:
+        if lang not in item.labels:
+            # example: "fi": "Virtanen"
+            copy_labels[lang] = wtitle
+    if (len(copy_labels) > 0):
+        item.editLabels(labels=copy_labels, summary="Adding missing labels.")
+        modifiedItem = True
+
+    if (modifiedItem == True):
+        item.get()
+    return modifiedItem
+
+
 def add_band(commands, finnarecord = None):
 
     wdsite = pywikibot.Site('wikidata', 'wikidata')
@@ -380,6 +414,8 @@ def add_band(commands, finnarecord = None):
         if (isBandItem(artist_item) == False):
             print('WARN: qid is not for artist', isBandItem)
             return None
+        if (artistlabel != ""):
+            check_and_add_labels(artist_item, artistlabel)
 
     print('Adding properties...')
     add_band_properties(repo, artist_item, commands)
