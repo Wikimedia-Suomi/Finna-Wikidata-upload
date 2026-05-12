@@ -31,7 +31,7 @@ class FinnaRecord:
         
         self.albumtitle = None
         self.artistname = None
-        self.publishername = None
+        #self.publishername = None # must find from xml
         #self.releaseyear = None
         self.languagecode = None
         self.origlangcode = None
@@ -112,11 +112,16 @@ class FinnaRecord:
         
         if "title" not in records:
             return ""
-            
+
         f_title = records['title'] # Tääsosuma
         f_shorttitle = records['shortTitle'] # Tääsosuma
+        
+        # alternative titles may include list of song names..
         #f_alttitle = records['alternativeTitles'] # ??
-        f_titlestatement = records['titleStatement'] # Halavatun Papat
+        
+        # "sov. Pedro Hietanen" -> not album title..
+        #f_titlestatement = records['titleStatement'] # Halavatun Papat
+        
         #f_summary = records['summary'] # ??
 
         print("DBEUG: found title in finna record: ", f_title)
@@ -138,9 +143,9 @@ class FinnaRecord:
             
             if (ff_value == "0/Sound/"):
                 return True
-            if (ff_translated == "Sound"):
-                return True
             if (ff_value == "1/Sound/CD/"):
+                return True
+            if (ff_translated == "Sound" or ff_translated == "Äänite"):
                 return True
             if (ff_translated == "CD"):
                 return True
@@ -160,6 +165,11 @@ class FinnaRecord:
         if (f_pd == "1 CD-äänilevy"):
             return True
         return False
+
+    #def getnonpresenterauthors(self):
+        # may have band name with "type": "Corporate Name"
+        # may have band member name with "type": "Personal Name"
+        # may have person id "id": "000103392", - kanto id?
 
     def getlang(self):
         records = self.finnarecord['records'][0]
@@ -560,6 +570,10 @@ def getlanguageqcode(lang):
     d_langqcode["ranska"] = "Q150"
     d_langqcode["fra"] = "Q150" # langcode
     
+    # useita kieliä
+    #d_langqcode["mul"] = "Q20923490"
+
+    
     if lang in d_langqcode:
         return d_langqcode[lang]
     return ""
@@ -580,9 +594,10 @@ def get_finna_artist_qcode(finnarecord):
 def get_finna_label_qcode(finnarecord):
     if (finnarecord == None):
         return ""
-    if (finnarecord.publishername == None):
-        return ""
-    return getlabelqcode(finnarecord.publishername)
+    #if (finnarecord.publishername == None):
+    #    return ""
+    #return getlabelqcode(finnarecord.publishername)
+    return ""
 
 
 def isArtistItem(item):
@@ -736,8 +751,9 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
 
         for l in albumlangs:
             langqcode = getlanguageqcode(l)
-            print("Adding claim: language for ", l)
-            add_item_link(repo, wditem, 'P407', langqcode)
+            if (langqcode != ""):
+                print("Adding claim: language for ", l)
+                add_item_link(repo, wditem, 'P407', langqcode)
         
 
     # levymerkki (P264)
