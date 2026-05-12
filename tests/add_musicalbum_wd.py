@@ -203,6 +203,10 @@ class FinnaRecord:
         # validate it is a date, decade or year?
         return f_year
 
+    # genres
+    # <datafield tag="655" ind1=" " ind2="7"><subfield code="a">popmusiikki</subfield>
+    # <datafield tag="655" ind1=" " ind2="7"><subfield code="a">reggae</subfield>
+
     # publisher and publisher identifier
     # <subfield code="b">Ekvapoint</subfield><subfield code="a">HPCD-008</subfield>
     #def parsepublisher(self):
@@ -644,11 +648,13 @@ def add_item_link(repo, wditem, prop, qcode):
     target = pywikibot.ItemPage(repo, qcode) 
     claim.setTarget(target)
     wditem.addClaim(claim)#, summary='Adding 1 claim')
+    return claim
 
 def add_item_value(repo, wditem, prop, value):
     claim = pywikibot.Claim(repo, prop)
     claim.setTarget(value)
     wditem.addClaim(claim)#, summary='Adding 1 claim')
+    return claim
 
 # todo: other possible parameters
 def add_item_source_url(repo, p_claim, commands, finnarecord = None):
@@ -732,10 +738,11 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         if (genreqcode != ""):
         
             print("Adding claim: genre")
-            claim = pywikibot.Claim(repo, 'P136')
-            target = pywikibot.ItemPage(repo, genreqcode) 
-            claim.setTarget(target)
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
+            genreclaim = add_item_link(repo, wditem, 'P136', genreqcode)
+
+            # add source if given
+            add_item_source_url(repo, genreclaim, commands, finnarecord)
+
 
     # kieli
     if not 'P407' in wditem.claims:
@@ -753,7 +760,10 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
             langqcode = getlanguageqcode(l)
             if (langqcode != ""):
                 print("Adding claim: language for ", l)
-                add_item_link(repo, wditem, 'P407', langqcode)
+                langclaim = add_item_link(repo, wditem, 'P407', langqcode)
+
+                # add source if given
+                add_item_source_url(repo, langclaim, commands, finnarecord)
         
 
     # levymerkki (P264)
