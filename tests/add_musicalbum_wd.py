@@ -467,6 +467,9 @@ def isItemInstanceOf(item, qcode):
     print("item is not instance of:", qcode)
     return False
 
+# note that while finna might give items in finnish, also swedish and english are possible..
+# and if other sources are queried those might be in english.
+# some items in wikidata might not have finnish label, but might have in "mul" or english, or vice versa..
 def searchItembySparql(repo, text, instance, lang='fi'):
 
     print("DEBUG: searching item with label: ", text)
@@ -704,7 +707,7 @@ def get_finna_artist_qcode(finnarecord):
         return ""
     return getartistqcode(finnarecord.artistname)
 
-def get_finna_label_qcode(finnarecord):
+def get_finna_label_name(finnarecord):
     if (finnarecord == None):
         return ""
     #if (finnarecord.publishername == None):
@@ -848,9 +851,9 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         if "genre" in commands:
             genreqcode = searchItembySparql(repo, commands["genre"], 'Q188451', 'fi')
         
-        if (genreqcode == "" or genreqcode == None):
+        #if (genreqcode == "" or genreqcode == None):
             # deprecated list lookup, remove if sparql works well enough
-            genreqcode = getgenreqcode(commands["genre"])
+        #    genreqcode = getgenreqcode(commands["genre"])
 
         if (genreqcode != "" and genreqcode != None):
         
@@ -861,7 +864,7 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
             add_item_source_url(repo, genreclaim, commands, finnarecord)
 
 
-    # kieli
+    # kieli, language(s) of the album - may be multiple
     if not 'P407' in wditem.claims:
         
         albumlangs = None
@@ -875,6 +878,10 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
 
         if albumlangs:
             for l in albumlangs:
+                
+                # switch to sparql to fetch items by languages:
+                # TODO: need a query by specific property with ISO-code instead of label
+                
                 langqcode = getlanguageqcode(l)
                 if (langqcode != ""):
                     print("Adding claim: language for ", l)
@@ -890,16 +897,23 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         # note: might have multiple publishers..
         
         # try to fetch qcode by name from record
-        labelqcode = get_finna_label_qcode(finnarecord)
+        labelqcode = ""
+        
+        # might have a list of publishers here..
+        labelname = get_finna_label_name(finnarecord)
+        if (labelname != ""):
+            labelqcode = searchItembySparql(repo, labelname, '', 'fi')
+
         if labelqcode == "" and "muslabelqid" in commands:
             # fallback if qcode is given in commands
             labelqcode = commands["muslabelqid"]
-
+        
         # if name is given in commands (deprecated)
         if labelqcode == "" and "muslabel" in commands:
-            labelqcode = getlabelqcode(commands["muslabel"])
+            #labelname = commands["muslabel"]
+            labelqcode = searchItembySparql(repo, commands["muslabel"], '', 'en')
 
-        if (labelqcode != ""):
+        if (labelqcode != "" and labelqcode != None):
         
             print("Adding claim: record label")
             claim = pywikibot.Claim(repo, 'P264')
@@ -1277,10 +1291,11 @@ def parse_command_pars(argv):
             if (getartistqcode(commands["artist"]) == ""):
                 print("WARN: no qcode for artist", commands["artist"])
                 exit()
-        if (key == "muslabel"):
-            if (getlabelqcode(commands["muslabel"]) == ""):
-                print("WARN: no qcode for label", commands["muslabel"])
-                exit()
+        # switch to sparql
+        #if (key == "muslabel"):
+        #    if (getlabelqcode(commands["muslabel"]) == ""):
+        #        print("WARN: no qcode for label", commands["muslabel"])
+        #        exit()
         # switch to sparql
         #if (key == "genre"):
         #    if (getgenreqcode(commands["genre"]) == ""):
