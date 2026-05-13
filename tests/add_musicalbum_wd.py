@@ -804,6 +804,9 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
     # esittäjä
     if not 'P175' in wditem.claims:
         
+        # note: it might be possible there is more than one artist,
+        # such as split-albums, so prepare for a list
+        
         # if finna record is given, try to find by name
         artist_qcode = get_finna_artist_qcode(finnarecord)
         if artist_qcode == "" and "artistqid" in commands:
@@ -817,12 +820,25 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         if (artist_qcode != ""):
             
             print("Adding claim: artist")
-            claim = pywikibot.Claim(repo, 'P175')
-            target = pywikibot.ItemPage(repo, artist_qcode) 
-            claim.setTarget(target)
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
-        
-    # release date (date formatting?)
+            artistclaim = add_item_link(repo, wditem, 'P175', artist_qcode)
+
+            # add source if given
+            add_item_source_url(repo, artistclaim, commands, finnarecord)
+
+    # TODO: members of a band in specific album
+
+    # tuottaja (P162)
+
+    # kappalelista (P658) ja taideteoksen osien lukumäärä (P2635) (ääniraitojen määrä)
+    
+    # kesto (P2047) (sekuntia)
+    
+    # jakelumuoto (P437), LP, CD, digitaalinen jakelu..
+
+    # äänityspaikka (P483)
+    # äänitysajankohta (P10135)
+
+    # release date julkaisupäivä (P577) (date formatting?)
     if not 'P577' in wditem.claims:
         releaseyear = ""
         if (finnarecord != None):
@@ -839,26 +855,36 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
             claim = pywikibot.Claim(repo, 'P577')
             #target = pywikibot.ItemPage(repo, released) 
             claim.setTarget(wbdate)
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
             
             add_item_source_url(repo, claim, commands, finnarecord)
             
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
 
     # genre
     if not 'P136' in wditem.claims:
         
-        genreqcode = ""
+        # TODO: prepare for a list of genres..
+
+        #if (finnarecord != None):
+            # may be a list
+            #genres = finnarecord.getgenres()
+            #for g in genres:
+            #genreqcode = searchItembySparql(repo, g, 'Q188451', 'fi')
+        
+        genreqcodes = list()
         if "genre" in commands:
             genreqcode = searchItembySparql(repo, commands["genre"], 'Q188451', 'fi')
+            if (genreqcode != None):
+                genreqcodes.append(genreqcode)
         
         #if (genreqcode == "" or genreqcode == None):
             # deprecated list lookup, remove if sparql works well enough
         #    genreqcode = getgenreqcode(commands["genre"])
 
-        if (genreqcode != "" and genreqcode != None):
+        for gcode in genreqcodes:
         
-            print("Adding claim: genre")
-            genreclaim = add_item_link(repo, wditem, 'P136', genreqcode)
+            print("Adding claim: genre for ", gcode)
+            genreclaim = add_item_link(repo, wditem, 'P136', gcode)
 
             # add source if given
             add_item_source_url(repo, genreclaim, commands, finnarecord)
@@ -916,13 +942,10 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         if (labelqcode != "" and labelqcode != None):
         
             print("Adding claim: record label")
-            claim = pywikibot.Claim(repo, 'P264')
-            target = pywikibot.ItemPage(repo, labelqcode) 
-            claim.setTarget(target)
+            labelclaim = add_item_link(repo, wditem, 'P264', labelqcode)
 
-            add_item_source_url(repo, claim, commands, finnarecord)
-            
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
+            # add source if given
+            add_item_source_url(repo, labelclaim, commands, finnarecord)
 
 
     # teoksen tyyppi (P7937)
@@ -940,6 +963,8 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
     if not 'P291' in wditem.claims:
         # from name to qid? 
         # maailmanlaajuinen (Q13780930)
+        # eurooppa
+        # suomi
 
         placeqcode = ""
         if "placeqid" in commands:
@@ -948,10 +973,10 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         if (placeqcode != ""):
         
             print("Adding claim: release place")
-            claim = pywikibot.Claim(repo, 'P291')
-            target = pywikibot.ItemPage(repo, placeqcode) 
-            claim.setTarget(target)
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
+            placeclaim = add_item_link(repo, wditem, 'P291', placeqcode)
+
+            # add source if given
+            add_item_source_url(repo, placeclaim, commands, finnarecord)
 
     # discogs master
     if not 'P1954' in wditem.claims:
