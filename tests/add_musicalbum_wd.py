@@ -535,6 +535,12 @@ def searchItembySparql(repo, text, instance, lang='fi'):
             print("label is not correct: ", lbl)
             continue
 
+        # we would want to verify item is instance of correct type:
+        # query may give anything at any type currently.
+        # problem is that there may be many sub-types 
+        # so filtering in query by instances might need a long list.
+        # another issue is that data can be simply broken for some reason, so avoid using those.
+
         if (len(instance) > 0):
             if (isItemInstanceOf(item, instance) == True):
                 print("ok, matching style")
@@ -656,6 +662,10 @@ def getcountryqcode(commands):
     d_countryqcode = dict()
     d_countryqcode["Yhdysvallat"] = "Q30"
     d_countryqcode["Suomi"] = "Q33"
+    d_countryqcode["Italia"] = "Q38"
+    d_countryqcode["Espanja"] = "Q29"
+    d_countryqcode["Kreikka"] = "Q41"
+    d_countryqcode["Chile"] = "Q298"
     
     if "country" not in commands:
         return ""

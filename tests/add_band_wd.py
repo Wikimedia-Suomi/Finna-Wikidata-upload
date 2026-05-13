@@ -8,6 +8,8 @@
 import re
 import sys
 import pywikibot
+from pywikibot.data import sparql
+from pywikibot.data.sparql import SparqlQuery
 
 import json
 #import psycopg2
@@ -19,6 +21,14 @@ import urllib
 import urllib.request
 import urllib.parse
 
+# in case query gives wikidata link instead of plain qcode
+# -> parse to plain qcode
+def parseqcodefromwikidatalink(text):
+
+    ilast = text.rfind("/", 0, len(text)-1)
+    if (ilast < 0):
+        return text
+    return text[ilast+1:]
 
 def escapesinglequote(s):
     return s.replace("'", "''")
@@ -54,6 +64,120 @@ def getlabelbylangfromitem(item, lang):
             return label
     return None
 
+def getlabelsbylangsfromitem(item, langlist):
+    
+    lbllist = dict()
+    for li in item.labels:
+        label = item.labels[li]
+        if (li in langlist):
+            print("DEBUG: found label for ", item.getID() ," in lang ", li ,": ", label)
+            #return label
+            lbllist[li] = label
+    return lbllist
+
+def isItemInstanceOf(item, qcode):
+
+    if (qcode == None or qcode == ""):
+        print("no qcode for instance")
+        return False
+
+    instance_of = item.claims.get('P31', [])
+    for claim in instance_of:
+        qid = claim.getTarget().id
+        if (qid == qcode):
+            print("ok, matching instance found")
+            return True
+        print("item is instance of: ", qid)
+        
+    print("item is not instance of:", qcode)
+    return False
+
+# note that while finna might give items in finnish, also swedish and english are possible..
+# and if other sources are queried those might be in english.
+# some items in wikidata might not have finnish label, but might have in "mul" or english, or vice versa..
+def searchItembySparql(repo, text, instance, lang='fi'):
+
+    print("DEBUG: searching item with label: ", text)
+
+    endpoint = 'https://query.wikidata.org/sparql'
+    entity_url = 'https://www.wikidata.org/entity/' # must be provided when endpoint is given
+    
+    # TODO: filter by instance of music style in query
+    
+    # this query might work for partial labels..
+    #query = 'SELECT ?item ?itemLabel'
+    #query += ' WHERE {'
+    #query += ' ?item rdfs:label ?itemLabel.'
+    #query += ' FILTER(CONTAINS(LCASE(?itemLabel), "' + genre + '"@' + lang +')).'
+    #query += ' } limit 10'
+
+    query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE{'
+    query += ' ?item ?label "'+ text +'"@' + lang + '.'
+    query += ' ?article schema:about ?item .'
+    query += ' ?article schema:inLanguage "' + lang + '" .' # note part of below
+    query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.'
+    query += ' SERVICE wikibase:label { bd:serviceParam wikibase:language "' + lang + '". } }'
+
+
+    print("DEBUG: using endpoint: ", endpoint)
+
+    query_object = sparql.SparqlQuery(endpoint=endpoint, entity_url=entity_url)
+
+    print("DEBUG: executing SPARQL query: ", query)
+    
+    # Execute the SPARQL query and retrieve the data
+    data = query_object.select(query, full_data=True)
+    if data is None:
+        print("SPARQL failed. query error or login BUG?")
+        return None
+
+    # if there are too many other results, might be too ambigious -> cancel?
+
+    print("DEBUG: checking query results.. ")
+
+    for row in data:
+        print("DEBUG: row:", row)
+        page_id = str(row['item'])
+        
+        # error: page_id is a link, not just qcode..
+        # Http://www.wikidata.org/entity/Q484179
+        # -> strip it
+        itemqcode = parseqcodefromwikidatalink(page_id)
+        
+        item = getitembyqcode(repo, itemqcode)
+        if (item == None):
+            # invalid qcode?
+            continue
+        
+        lbl = getlabelbylangfromitem(item, lang)
+        if (lbl == None):
+            # no label in this language?
+            print("no label in language: ", lang)
+            continue
+
+        if (lbl != text):
+            # not correct label for some reason
+            print("label is not correct: ", lbl)
+            continue
+
+        # we would want to verify item is instance of correct type:
+        # query may give anything at any type currently.
+        # problem is that there may be many sub-types 
+        # so filtering in query by instances might need a long list.
+        # another issue is that data can be simply broken for some reason, so avoid using those.
+
+        if (len(instance) > 0):
+            if (isItemInstanceOf(item, instance) == True):
+                print("ok, matching style")
+                return itemqcode
+        else:
+            print("no instance qid given, using qid", itemqcode)
+            return itemqcode
+
+    print("did not find genre for:", genre)
+    return None
+
+
 # note: we need "WbTime" which is not a standard datetime
 def getwbdate(year, month=0, day=0):
     if (year != 0 and month != 0 and day != 0):
@@ -79,6 +203,7 @@ def checkproperties(repo, itemqcode):
     return True
 
 
+
 # todo: read config for mapping
 def getgenreqcode(commands):
 
@@ -88,7 +213,8 @@ def getgenreqcode(commands):
     d_genretoqcode["sinfoninen metalli"] = "Q486415"
     d_genretoqcode["metalcore"] = "Q183862"
     d_genretoqcode["black metal"] = "Q132438"
-    
+    d_genretoqcode["death metal"] = "Q483251"
+
     if "genre" not in commands:
         return ""
 
@@ -98,17 +224,21 @@ def getgenreqcode(commands):
     return ""
 
 # todo: read config for mapping
-def getlabelqcode(commands):
+def getmuslabelqcode(commands):
 
     # mapping label to qcode
     d_labeltoqcode = dict()
     d_labeltoqcode["Nuclear Blast"] = "Q158886"
+    d_labeltoqcode["Nuclear Blast Records"] = "Q158886"
     d_labeltoqcode["Napalm Records"] = "Q693194"
     d_labeltoqcode["Century Media Records"] = "Q158867"
     d_labeltoqcode["Spikefarm Records"] = "Q51794339"
     d_labeltoqcode["Naturmacht Productions"] = "Q73783815"
     d_labeltoqcode["Avantgarde Music"] = "Q790187"
     d_labeltoqcode["Rockshots Records"] = "Q117885298"
+    d_labeltoqcode["Warner Music Finland"] = "Q10831860"
+    d_labeltoqcode["Inverse Records"] = "Q23045098"
+    d_labeltoqcode["Candlelight Records"] = "Q852900"
     
     if "muslabel" not in commands:
         return ""
@@ -128,8 +258,9 @@ def getcountryqcode(commands):
     d_countryqcode["Yhdysvallat"] = "Q30"
     d_countryqcode["Suomi"] = "Q33"
     d_countryqcode["Italia"] = "Q38"
-    d_countryqcode["Chile"] = "Q298"
+    d_countryqcode["Espanja"] = "Q29"
     d_countryqcode["Kreikka"] = "Q41"
+    d_countryqcode["Chile"] = "Q298"
 
     if "country" not in commands:
         return ""
@@ -154,8 +285,10 @@ def getlanguageqcode(commands):
     d_langqcode["swe"] = "Q9027" # langcode
     d_langqcode["ranska"] = "Q150"
     d_langqcode["fra"] = "Q150" # langcode
-
-    #espanja (Q1321)
+    d_langqcode["espanja"] = "Q1321"
+    d_langqcode["spa"] = "Q1321" # langcode
+    d_langqcode["italia"] = "Q652"
+    d_langqcode["ita"] = "Q652" # langcode
 
     if "language" not in commands:
         return ""
@@ -164,6 +297,15 @@ def getlanguageqcode(commands):
     if lq in d_langqcode:
         return d_langqcode[lq]
     return ""
+
+def getQcodesFromItemProp(item, prop):
+    qlist = list()
+    p_claims = item.claims.get(prop, [])
+    for claim in p_claims:
+        qid = claim.getTarget().id
+        if (qid not in qlist):
+            qlist.append(qid)
+    return qlist
 
 def isBandItem(item):
     instance_of = item.claims.get('P31', [])
@@ -198,11 +340,13 @@ def add_item_link(repo, wditem, prop, qcode):
     target = pywikibot.ItemPage(repo, qcode) 
     claim.setTarget(target)
     wditem.addClaim(claim)#, summary='Adding 1 claim')
+    return claim
 
 def add_item_value(repo, wditem, prop, value):
     claim = pywikibot.Claim(repo, prop)
     claim.setTarget(value)
     wditem.addClaim(claim)#, summary='Adding 1 claim')
+    return claim
 
 
 # todo: other possible parameters
@@ -251,10 +395,11 @@ def add_band_properties(repo, wditem, commands):
         if (genreqcode != ""):
         
             print("Adding claim: genre")
-            claim = pywikibot.Claim(repo, 'P136')
-            target = pywikibot.ItemPage(repo, genreqcode) 
-            claim.setTarget(target)
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
+            genreclaim = add_item_link(repo, wditem, 'P136', genreqcode)
+
+            # add source if given
+            add_item_source_url(repo, genreclaim, commands, finnarecord)
+
 
     # alkuperämaa: P495
     if not 'P495' in wditem.claims:
@@ -262,14 +407,11 @@ def add_band_properties(repo, wditem, commands):
         if (countryqcode != ""):
         
             print("Adding claim: country of origin")
-            claim = pywikibot.Claim(repo, 'P495')
-            target = pywikibot.ItemPage(repo, countryqcode) 
-            claim.setTarget(target)
+            countryclaim = add_item_link(repo, wditem, 'P495', countryqcode)
 
-            # add source (if any)
-            add_item_source_url(repo, claim, commands)
+            # add source if given
+            add_item_source_url(repo, countryclaim, commands, finnarecord)
             
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
 
     # työskentelyajan alku (P2031)
     if not 'P2031' in wditem.claims:
@@ -314,15 +456,15 @@ def add_band_properties(repo, wditem, commands):
             labelqcode = commands["muslabelqid"]
 
         if (labelqcode == ""):
-            labelqcode = getlabelqcode(commands)
+            labelqcode = getmuslabelqcode(commands)
         
         if (labelqcode != ""):
         
             print("Adding claim: record label")
-            claim = pywikibot.Claim(repo, 'P264')
-            target = pywikibot.ItemPage(repo, labelqcode) 
-            claim.setTarget(target)
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
+            labelclaim = add_item_link(repo, wditem, 'P264', labelqcode)
+
+            # add source if given
+            add_item_source_url(repo, labelclaim, commands, finnarecord)
 
     # perustamispaikka (P740)
     
@@ -335,6 +477,40 @@ def add_band_properties(repo, wditem, commands):
             
             print("Adding claim: musicbrainz artist")
             add_item_value(repo, wditem, 'P434', mbrainz)
+
+
+def make_description(repo, commands):
+
+    # languages to make descriptions for
+    supportedLabels = "en", "fi", "mul"
+
+    c_labels = {}
+    countryqcode = ""
+    if "country" in commands:
+        # country given
+        countryqcode = getcountryqcode(commands)
+        if (countryqcode != ""):
+            c_item = getitembyqcode(repo, countryqcode)
+            if (c_item != None):
+                c_labels = getlabelsbylangsfromitem(c_item, supportedLabels)
+        
+
+    if countryqcode == "" and "artistqid" in commands:
+        # fallback, if we are updating check if item has property defined
+        artistitem = getitembyqcode(repo, commands["artistqid"])
+        if (artistitem != None):
+            p_country = 'P495'
+            q_country = getQcodesFromItemProp(artistitem, p_country)
+            if (q_country != None):
+                for qc in q_country:
+                    c_item = getitembyqcode(repo, qc)
+                    if (c_item != None):
+                        c_labels = getlabelsbylangsfromitem(c_item, supportedLabels)
+
+    # now make the labels for supported language:
+    # "band from xxx" and so on
+    #if (c_labels != None):
+    #    for cl in c_labels:
 
 
 def create_band_item(repo, artistlabel):
