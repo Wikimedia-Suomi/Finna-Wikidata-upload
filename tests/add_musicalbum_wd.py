@@ -8,6 +8,8 @@
 import re
 import sys
 import pywikibot
+from pywikibot.data import sparql
+from pywikibot.data.sparql import SparqlQuery
 
 import json
 #import psycopg2
@@ -404,6 +406,15 @@ def get_finna_record(frsession, finnaid, quoteid=True):
 
 # / FinnaApi
 
+# in case query gives wikidata link instead of plain qcode
+# -> parse to plain qcode
+def parseqcodefromwikidatalink(text):
+
+    ilast = text.rfind("/", 0, len(text)-1)
+    if (ilast < 0):
+        return text
+    return text[ilast+1:]
+    
 
 def escapesinglequote(s):
     return s.replace("'", "''")
@@ -438,6 +449,100 @@ def getlabelbylangfromitem(item, lang):
             print("DEBUG: found label for ", item.getID() ," in lang ", lang ,": ", label)
             return label
     return None
+
+def isItemInstanceOf(item, qcode):
+
+    if (qcode == None or qcode == ""):
+        print("no qcode for instance")
+        return False
+
+    instance_of = item.claims.get('P31', [])
+    for claim in instance_of:
+        qid = claim.getTarget().id
+        if (qid == qcode):
+            print("ok, matching instance found")
+            return True
+        print("item is instance of: ", qid)
+        
+    print("item is not instance of:", qcode)
+    return False
+
+def searchItembySparql(repo, text, instance, lang='fi'):
+
+    print("DEBUG: searching item with label: ", text)
+
+    endpoint = 'https://query.wikidata.org/sparql'
+    entity_url = 'https://www.wikidata.org/entity/' # must be provided when endpoint is given
+    
+    # TODO: filter by instance of music style in query
+    
+    # this query might work for partial labels..
+    #query = 'SELECT ?item ?itemLabel'
+    #query += ' WHERE {'
+    #query += ' ?item rdfs:label ?itemLabel.'
+    #query += ' FILTER(CONTAINS(LCASE(?itemLabel), "' + genre + '"@' + lang +')).'
+    #query += ' } limit 10'
+
+    query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE{'
+    query += ' ?item ?label "'+ text +'"@' + lang + '.'
+    query += ' ?article schema:about ?item .'
+    query += ' ?article schema:inLanguage "' + lang + '" .' # note part of below
+    query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.'
+    query += ' SERVICE wikibase:label { bd:serviceParam wikibase:language "' + lang + '". } }'
+
+
+    print("DEBUG: using endpoint: ", endpoint)
+
+    query_object = sparql.SparqlQuery(endpoint=endpoint, entity_url=entity_url)
+
+    print("DEBUG: executing SPARQL query: ", query)
+    
+    # Execute the SPARQL query and retrieve the data
+    data = query_object.select(query, full_data=True)
+    if data is None:
+        print("SPARQL failed. query error or login BUG?")
+        return None
+
+    # if there are too many other results, might be too ambigious -> cancel?
+
+    print("DEBUG: checking query results.. ")
+
+    for row in data:
+        print("DEBUG: row:", row)
+        page_id = str(row['item'])
+        
+        # error: page_id is a link, not just qcode..
+        # Http://www.wikidata.org/entity/Q484179
+        # -> strip it
+        itemqcode = parseqcodefromwikidatalink(page_id)
+        
+        item = getitembyqcode(repo, itemqcode)
+        if (item == None):
+            # invalid qcode?
+            continue
+        
+        lbl = getlabelbylangfromitem(item, lang)
+        if (lbl == None):
+            # no label in this language?
+            print("no label in language: ", lang)
+            continue
+
+        if (lbl != text):
+            # not correct label for some reason
+            print("label is not correct: ", lbl)
+            continue
+
+        if (len(instance) > 0):
+            if (isItemInstanceOf(item, instance) == True):
+                print("ok, matching style")
+                return itemqcode
+        else:
+            print("no instance qid given, using qid", itemqcode)
+            return itemqcode
+
+    print("did not find genre for:", genre)
+    return None
+    
 
 # note: we need "WbTime" which is not a standard datetime
 def getwbdate(year, month=0, day=0):
@@ -505,7 +610,7 @@ def gettypeqcode(commands):
 
 
 # todo: read config for mapping
-def getgenreqcode(commands):
+def getgenreqcode(genre):
 
     # mapping genre to qcode
     d_genretoqcode = dict()
@@ -514,10 +619,6 @@ def getgenreqcode(commands):
     d_genretoqcode["metalcore"] = "Q183862"
     d_genretoqcode["black metal"] = "Q132438"
     
-    if "genre" not in commands:
-        return ""
-
-    genre = commands["genre"]
     if genre in d_genretoqcode:
         return d_genretoqcode[genre]
     return ""
@@ -742,8 +843,16 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
 
     # genre
     if not 'P136' in wditem.claims:
-        genreqcode = getgenreqcode(commands)
-        if (genreqcode != ""):
+        
+        genreqcode = ""
+        if "genre" in commands:
+            genreqcode = searchItembySparql(repo, commands["genre"], 'Q188451', 'fi')
+        
+        if (genreqcode == "" or genreqcode == None):
+            # deprecated list lookup, remove if sparql works well enough
+            genreqcode = getgenreqcode(commands["genre"])
+
+        if (genreqcode != "" and genreqcode != None):
         
             print("Adding claim: genre")
             genreclaim = add_item_link(repo, wditem, 'P136', genreqcode)
@@ -1051,7 +1160,7 @@ def add_album(commands, finnarecord = None):
     if (artistlabel == None or artistlabel == ""):
         print('WARN: cannot create, artist unknown')
         return None
-    
+
     album_item = {}
     if (len(albumqid) == 0):
 
@@ -1157,6 +1266,10 @@ def parse_command_pars(argv):
             print("WARN: unsupported arg:", key)
             exit()
         if (key not in commands and key in support_args):
+
+            #if (val[0] == '"' and val[len(val)-1] == '"'):
+            #    val = val[1:len(val)-1]
+
             val = val.replace('"', "") # remove double quotes from command line
             commands[key] = val
             
@@ -1168,10 +1281,11 @@ def parse_command_pars(argv):
             if (getlabelqcode(commands["muslabel"]) == ""):
                 print("WARN: no qcode for label", commands["muslabel"])
                 exit()
-        if (key == "genre"):
-            if (getgenreqcode(commands) == ""):
-                print("WARN: no qcode for genre", commands["genre"])
-                exit()
+        # switch to sparql
+        #if (key == "genre"):
+        #    if (getgenreqcode(commands["genre"]) == ""):
+        #        print("WARN: no qcode for genre", commands["genre"])
+        #        exit()
         if (key == "type"):
             if (gettypeqcode(commands) == ""):
                 print("WARN: no qcode for type", commands["type"])
