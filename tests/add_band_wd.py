@@ -174,7 +174,7 @@ def searchItembySparql(repo, text, instance, lang='fi'):
             print("no instance qid given, using qid", itemqcode)
             return itemqcode
 
-    print("did not find genre for:", genre)
+    print("did not find item for:", text)
     return None
 
 
