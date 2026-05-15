@@ -42,6 +42,9 @@ def addtolist(dest, s):
         return
     if (len(s) == 0):
         return
+    # throw up exception, python does not catch this otherwise
+    if (dest == s):
+        exit()
     if s in dest:
         return
     dest.append(s)
@@ -814,9 +817,8 @@ def getArtistsFromItem(item):
     qlist = list()
     part_of = item.claims.get('P282', [])
     for claim in part_of:
-        qid = claim.getTarget().id
-        if (qid not in qlist):
-            qlist.append(qid)
+        # avoid duplicates, catch errors
+        addtolist(qlist, claim.getTarget().id)
     return qlist
 
 def add_item_link(repo, wditem, prop, qcode):
@@ -938,8 +940,10 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         genreqcodes = list()
         if "genre" in commands:
             genreqcode = searchItembySparql(repo, commands["genre"], 'Q188451', 'fi')
-            if (genreqcode != None):
-                genreqcodes.append(genreqcode)
+            
+            # avoid duplicates, catch errors
+            addtolist(genreqcodes, genreqcode)
+            
         
         #if (genreqcode == "" or genreqcode == None):
             # deprecated list lookup, remove if sparql works well enough
@@ -991,10 +995,11 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         if (finnarecord != None):
             for pname in finnarecord.publishernames:
                 pqcode = searchItembySparql(repo, pname, '', 'fi')
-                if (pqcode != None and pqcode not in pubqcodes):
-                    pubqcodes.append(pqcode)
                 if (pqcode == None):
                     print("note, no qcode for publsher:", pname)
+
+                # avoid duplicates, catch errors
+                addtolist(pubqcodes, pqcode)
             
         if (len(pubqcodes) == 0 and "muslabelqid" in commands):
             # fallback if qcode is given in commands
@@ -1004,8 +1009,10 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         if (len(pubqcodes) == 0 and "muslabel" in commands):
             #labelname = commands["muslabel"]
             pqcode = searchItembySparql(repo, commands["muslabel"], '', 'en')
-            if (pqcode != None and pqcode not in pubqcodes):
-                pubqcodes.append(pqcode)
+
+            # avoid duplicates, catch errors
+            addtolist(pubqcodes, pqcode)
+            
 
         if (len(pubqcodes) > 0):
             
