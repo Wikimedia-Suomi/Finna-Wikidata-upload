@@ -366,6 +366,17 @@ class FinnaRecord:
 
 # / class FinnaRecord
 
+# final parameters to push into wikidata:
+# after parsing finna data and finding qcodes
+class FinalParams:
+    def __init__(self):
+        self.publishers = dict() # name<-> qcode
+        self.places = dict() # name<-> qcode
+
+
+
+# / class FinalParams
+
 # FinnaApi:
 
 # urlencode Finna parameters
@@ -906,6 +917,10 @@ def add_item_source_url(repo, p_claim, commands, finnarecord = None):
 
 
 # todo: use data from record instead from commandline
+
+# TODO: move parsing and finding qcodes to before starting this,
+# 
+
 def add_album_properties(repo, wditem, commands, finnarecord = None):
     
     # instance of
@@ -1424,6 +1439,8 @@ def add_album_from_finna(commands):
         return None
     
     # TODO: more validation..
+    # before starting to write in to wikidata, do more checks here
+    
     fr.parseFullRecord()
     
     # pass both record and extra commands:
