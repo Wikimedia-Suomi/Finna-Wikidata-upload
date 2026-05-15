@@ -23,6 +23,46 @@ import urllib.parse
 
 import xml.etree.ElementTree as XEltree
 
+def endswith(text, char):
+    if (len(text) < 1):
+        return False
+    ch = text[len(text)-1]
+    if (ch == char):
+        return True
+    return False
+
+def removelastchar(text):
+    if (len(text) > 0):
+        return text[:len(text)-1]
+    return text
+
+
+def addtolist(dest, s):
+    if (s == None):
+        return
+    if (len(s) == 0):
+        return
+    if s in dest:
+        return
+    dest.append(s)
+
+# cleanup and normalize information to plain list without duplicates
+def cleanupaddtolist(dest, source):
+    if isinstance(source, list):
+        for l in source:
+            # cleanup, don't add duplicates
+            if (endswith(l, ";") == True):
+                l = removelastchar(l)
+            l = l.strip()
+            addtolist(dest, l) 
+        
+    else:
+        # cleanup, don't add duplicates
+        if (endswith(source, ";") == True):
+            source = removelastchar(source)
+        source = source.strip()
+        addtolist(dest, source) 
+
 # class FinnaRecord
 
 class FinnaRecord:
@@ -38,7 +78,7 @@ class FinnaRecord:
         #self.releaseyear = None
         self.languagecode = None
         self.origlangcode = None
-
+        
     # simple checks if received record could be usable
     def isFinnaRecordOk(self):
         if (self.finnarecord == None):
@@ -274,10 +314,10 @@ class FinnaRecord:
         for df in datafields:
             # datafield attributes
             dftag = df.get("tag") # not sure what the values here are..
-            dfind1 = df.get("ind1") # not sure what the values here are..
-            dfind2 = df.get("ind2") # not sure what the values here are..
+            dind1 = df.get("ind1") # not sure what the values here are..
+            dind2 = df.get("ind2") # not sure what the values here are..
             
-            print("tag,", dftag, "ind1", dfind1, "ind2", dfind2)
+            print("tag,", dftag, "ind1", dind1, "ind2", dind2)
 
             # subfield and attributes
             #subfields = df.findall("subfield")
@@ -294,12 +334,20 @@ class FinnaRecord:
                 # if dftag == 245, ind1 == 1, ind2 == 0 and sfcode == a -> album name 
                 # if dftag == 245, ind1 == 1, ind2 == 0 and sfcode == c -> artist name 
                 
-                if (dftag == 264 and ind1 == " " and ind2 == 1 and sfcode == a): # -> publishing place name 
-                    if sftext not in self.publishingplaces:
-                        self.publishingplaces.append(sftext)
-                if (dftag == 264 and ind1 == " " and ind2 == 1 and sfcode == b): # -> publisher name 
-                    if sftext not in self.publishernames:
-                        self.publishernames.append(sftext)
+                if (dftag == "264" and dind1 == " " and dind2 == "1" and sfcode == "a"): # -> publishing place name 
+                    
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.publishingplaces, sftext)
+                        
+                # <datafield tag="028" ind1="0" ind2="1"><subfield code="b">New Music Community</subfield><subfield code="a">NMC-001</subfield>
+                if (dftag == "028" and dind1 == "0" and dind2 == "1" and sfcode == "b"): # -> publisher name 
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.publishernames, sftext)
+                        
+                if (dftag == "264" and dind1 == " " and dind2 == 1 and sfcode == "b"): # -> publisher name 
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.publishernames, sftext)
+
                 # if dftag == 264, ind1 == " ", ind2 == 1 and sfcode == c -> year 
 
                 # if dftag == 264, ind1 == " ", ind2 == 4 and sfcode == c -> year 
