@@ -33,7 +33,8 @@ class FinnaRecord:
         
         self.albumtitle = None
         self.artistname = None
-        #self.publishername = None # must find from xml
+        self.publishernames = list() # must find from xml
+        self.publishingplaces = list()# must find from xml
         #self.releaseyear = None
         self.languagecode = None
         self.origlangcode = None
@@ -261,6 +262,9 @@ class FinnaRecord:
         for child in record:
             print(child.tag, child.attrib)
 
+        #publishingplaces = list()
+        #publishernames = list()
+
         # we can use datafield tag-attribute values to determine what they have,
         # and subfield code-attribute for more specifics
         #datafields = root.findall(".//datafield/subfield")
@@ -290,13 +294,20 @@ class FinnaRecord:
                 # if dftag == 245, ind1 == 1, ind2 == 0 and sfcode == a -> album name 
                 # if dftag == 245, ind1 == 1, ind2 == 0 and sfcode == c -> artist name 
                 
-                # if dftag == 264, ind1 == " ", ind2 == 1 and sfcode == a -> publishing place name 
-                # if dftag == 264, ind1 == " ", ind2 == 1 and sfcode == b -> publisher name 
+                if (dftag == 264 and ind1 == " " and ind2 == 1 and sfcode == a): # -> publishing place name 
+                    if sftext not in self.publishingplaces:
+                        self.publishingplaces.append(sftext)
+                if (dftag == 264 and ind1 == " " and ind2 == 1 and sfcode == b): # -> publisher name 
+                    if sftext not in self.publishernames:
+                        self.publishernames.append(sftext)
                 # if dftag == 264, ind1 == " ", ind2 == 1 and sfcode == c -> year 
 
                 # if dftag == 264, ind1 == " ", ind2 == 4 and sfcode == c -> year 
 
         print("parsed fields")
+
+        #self.publishernames = publishernames
+        #self.publishingplaces = publishingplaces
                 
         return True
 
@@ -487,7 +498,7 @@ def searchItembySparql(repo, text, instance, lang='fi'):
     #query += ' } limit 10'
 
     query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE{'
-    query += ' ?item ?label "'+ text +'"@' + lang + '.'
+    query += ' ?item ?label "'+ text +'"@' + lang + '.' # or alternative label(s)
     query += ' ?article schema:about ?item .'
     query += ' ?article schema:inLanguage "' + lang + '" .' # note part of below
     query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.'
@@ -633,7 +644,7 @@ def getgenreqcode(genre):
     return ""
 
 # todo: read config for mapping
-def getlabelqcode(muslabel):
+def getpublisherqcode(muslabel):
 
     # mapping label to qcode
     d_labeltoqcode = dict()
@@ -717,14 +728,6 @@ def get_finna_artist_qcode(finnarecord):
         return ""
     return getartistqcode(finnarecord.artistname)
 
-def get_finna_label_name(finnarecord):
-    if (finnarecord == None):
-        return ""
-    #if (finnarecord.publishername == None):
-    #    return ""
-    #return getlabelqcode(finnarecord.publishername)
-    return ""
-
 
 def isArtistItem(item):
     instance_of = item.claims.get('P31', [])
@@ -743,6 +746,9 @@ def isArtistItem(item):
             return True
         # rockyhtye (Q5741069)
         if (qid == 'Q5741069'):
+            return True
+        #muusikkoduo (Q9212979)
+        if (qid == 'Q9212979'):
             return True
         
     return False
@@ -931,31 +937,38 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
     if not 'P264' in wditem.claims:
         
         # note: might have multiple publishers..
+        labelqcodes = list()
         
-        # try to fetch qcode by name from record
-        labelqcode = ""
-        
-        # might have a list of publishers here..
-        labelname = get_finna_label_name(finnarecord)
-        if (labelname != ""):
-            labelqcode = searchItembySparql(repo, labelname, '', 'fi')
-
-        if labelqcode == "" and "muslabelqid" in commands:
+        # try to fetch qcode by name from record (if given)
+        if (finnarecord != None):
+            for pname in finnarecord.publishernames:
+                labelqcode = searchItembySparql(repo, pname, '', 'fi')
+                if (labelqcode != None and labelqcode not in labelqcodes):
+                    labelqcodes.append(labelqcodes)
+                if (labelqcode == None):
+                    print("note, no qcode for publsher:", pname)
+            
+        if (len(labelqcodes) == 0 and "muslabelqid" in commands):
             # fallback if qcode is given in commands
-            labelqcode = commands["muslabelqid"]
+            labelqcodes.append(commands["muslabelqid"])
         
         # if name is given in commands (deprecated)
-        if labelqcode == "" and "muslabel" in commands:
+        if (len(labelqcodes) == 0 and "muslabel" in commands):
             #labelname = commands["muslabel"]
             labelqcode = searchItembySparql(repo, commands["muslabel"], '', 'en')
+            if (labelqcode != None and labelqcode not in labelqcodes):
+                labelqcodes.append(labelqcodes)
 
-        if (labelqcode != "" and labelqcode != None):
+        if (len(labelqcodes) > 0):
+            
+            # todo: also validate that qcode is for a music label or a record company?
         
             print("Adding claim: record label")
-            labelclaim = add_item_link(repo, wditem, 'P264', labelqcode)
+            for lq in labelqcodes:
+                labelclaim = add_item_link(repo, wditem, 'P264', lq)
 
-            # add source if given
-            add_item_source_url(repo, labelclaim, commands, finnarecord)
+                # add source if given
+                add_item_source_url(repo, labelclaim, commands, finnarecord)
 
 
     # teoksen tyyppi (P7937)
@@ -1328,7 +1341,7 @@ def parse_command_pars(argv):
                 exit()
         # switch to sparql
         #if (key == "muslabel"):
-        #    if (getlabelqcode(commands["muslabel"]) == ""):
+        #    if (getpublisherqcode(commands["muslabel"]) == ""):
         #        print("WARN: no qcode for label", commands["muslabel"])
         #        exit()
         # switch to sparql
