@@ -985,34 +985,34 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
     if not 'P264' in wditem.claims:
         
         # note: might have multiple publishers..
-        labelqcodes = list()
+        pubqcodes = list()
         
         # try to fetch qcode by name from record (if given)
         if (finnarecord != None):
             for pname in finnarecord.publishernames:
-                labelqcode = searchItembySparql(repo, pname, '', 'fi')
-                if (labelqcode != None and labelqcode not in labelqcodes):
-                    labelqcodes.append(labelqcodes)
-                if (labelqcode == None):
+                pqcode = searchItembySparql(repo, pname, '', 'fi')
+                if (pqcode != None and pqcode not in pubqcodes):
+                    pubqcodes.append(pqcode)
+                if (pqcode == None):
                     print("note, no qcode for publsher:", pname)
             
-        if (len(labelqcodes) == 0 and "muslabelqid" in commands):
+        if (len(pubqcodes) == 0 and "muslabelqid" in commands):
             # fallback if qcode is given in commands
-            labelqcodes.append(commands["muslabelqid"])
+            pubqcodes.append(commands["muslabelqid"])
         
         # if name is given in commands (deprecated)
-        if (len(labelqcodes) == 0 and "muslabel" in commands):
+        if (len(pubqcodes) == 0 and "muslabel" in commands):
             #labelname = commands["muslabel"]
-            labelqcode = searchItembySparql(repo, commands["muslabel"], '', 'en')
-            if (labelqcode != None and labelqcode not in labelqcodes):
-                labelqcodes.append(labelqcodes)
+            pqcode = searchItembySparql(repo, commands["muslabel"], '', 'en')
+            if (pqcode != None and pqcode not in pubqcodes):
+                pubqcodes.append(pqcode)
 
-        if (len(labelqcodes) > 0):
+        if (len(pubqcodes) > 0):
             
             # todo: also validate that qcode is for a music label or a record company?
         
             print("Adding claim: record label")
-            for lq in labelqcodes:
+            for lq in pubqcodes:
                 labelclaim = add_item_link(repo, wditem, 'P264', lq)
 
                 # add source if given
