@@ -550,9 +550,9 @@ def searchItembySparql(repo, text, instance, lang='fi'):
 
     query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE{'
     query += ' ?item ?label "'+ text +'"@' + lang + '.' # or alternative label(s)
-    query += ' ?article schema:about ?item .'
+    #query += ' ?article schema:about ?item .' # not useful if there is no article in wikipedia?
     query += ' ?article schema:inLanguage "' + lang + '" .' # note part of below
-    query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.'
+    #query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.' # not useful if there is no article in wikipedia?
     query += ' SERVICE wikibase:label { bd:serviceParam wikibase:language "' + lang + '". } }'
 
 
@@ -569,7 +569,6 @@ def searchItembySparql(repo, text, instance, lang='fi'):
         return None
 
     # if there are too many other results, might be too ambigious -> cancel?
-
     print("DEBUG: checking query results.. ")
 
     for row in data:
@@ -592,6 +591,7 @@ def searchItembySparql(repo, text, instance, lang='fi'):
             print("no label in language: ", lang)
             continue
 
+        # TODO: compare with alternate label(s) if there are multiple
         if (lbl != text):
             # not correct label for some reason
             print("label is not correct: ", lbl)
