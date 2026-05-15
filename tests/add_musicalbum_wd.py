@@ -476,7 +476,25 @@ def parseqcodefromwikidatalink(text):
     if (ilast < 0):
         return text
     return text[ilast+1:]
+
+# check that qcode seems valid
+def isQcode(qcode):
+    if (qcode == None):
+        return False
     
+    # must have at least Q and numbers
+    if (len(qcode) < 2):
+        return False
+    ch = qcode[0]
+    if (ch != "Q"):
+        return False
+
+    # does it look like valid integer as well?
+    qnum = qcode[1:]
+    inum = int(qnum)
+    if (inum < 1):
+        return False
+    return True
 
 def escapesinglequote(s):
     return s.replace("'", "''")
@@ -496,6 +514,9 @@ def isDisambiguation(item):
 def getitembyqcode(repo, itemqcode):
     if (itemqcode == None or itemqcode == ""):
         print("no qcode for item")
+        return None
+    if (isQcode(itemqcode) == False):
+        print("not a valid qcode")
         return None
 
     item = pywikibot.ItemPage(repo, itemqcode)
@@ -550,7 +571,7 @@ def searchItembySparql(repo, text, instance, lang='fi'):
 
     query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE{'
     query += ' ?item ?label "'+ text +'"@' + lang + '.' # or alternative label(s)
-    #query += ' ?article schema:about ?item .' # not useful if there is no article in wikipedia?
+    #query += ' ?article schema:about ?item .' # not useful if there is no article in wikipedia? but needed to filter out some other odd things..
     query += ' ?article schema:inLanguage "' + lang + '" .' # note part of below
     #query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.' # not useful if there is no article in wikipedia?
     query += ' SERVICE wikibase:label { bd:serviceParam wikibase:language "' + lang + '". } }'
@@ -579,7 +600,16 @@ def searchItembySparql(repo, text, instance, lang='fi'):
         # Http://www.wikidata.org/entity/Q484179
         # -> strip it
         itemqcode = parseqcodefromwikidatalink(page_id)
+        if (isQcode(itemqcode) == False):
+            print("not a valid qcode: ", itemqcode)
+            continue
         
+        # check: in some cases it is not in wd:qcode format but might have page link
+        # like <https://fi.wikipedia.org/wiki/Universal_Music_Group>
+        # this can be filtered out with schema:about row, 
+        # but we can't locate some wikidata entries if that is applied for some reason..
+        # so anyway, double-check regardless of whatever we use and skip if not valid qcode
+
         item = getitembyqcode(repo, itemqcode)
         if (item == None):
             # invalid qcode?
