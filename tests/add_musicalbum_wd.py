@@ -873,6 +873,23 @@ def isAlbumItem(item):
         
     return False
 
+def isRecordLabel(item):
+    instance_of = item.claims.get('P31', [])
+    for claim in instance_of:
+
+        qid = claim.getTarget().id
+        
+        # levymerkki (Q18127)
+        if (qid == 'Q18127'):
+            return True
+        
+        # levy-yhtiö (Q2442401)
+        if (qid == 'Q2442401'):
+            return True
+        
+    return False
+
+
 def getArtistsFromItem(item):
     qlist = list()
     part_of = item.claims.get('P282', [])
@@ -1085,6 +1102,13 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
     
         print("Adding claim: record label")
         for lq in pubqcodes:
+            
+            item = getitembyqcode(repo, lq)
+            if (isRecordLabel(item) == False):
+                print("skipping item as not proper record label instance:", lq)
+                continue
+
+            
             labelclaim = add_item_link(repo, wditem, 'P264', lq)
 
             # add source if given
