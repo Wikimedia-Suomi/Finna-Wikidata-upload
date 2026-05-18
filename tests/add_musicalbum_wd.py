@@ -370,8 +370,15 @@ class FinnaRecord:
 # after parsing finna data and finding qcodes
 class FinalParams:
     def __init__(self):
-        self.publishers = dict() # name<-> qcode
-        self.places = dict() # name<-> qcode
+        self.artists = list() #dict() # name<-> qcode
+        self.publishers = list() #dict() # name<-> qcode
+        self.places = list() #dict() # name<-> qcode
+        self.genres = list() #dict() # name<-> qcode
+        self.languages = list() #dict() # name<-> qcode
+        #self.countries = list() #dict() # name<-> qcode
+        self.year = ""
+        self.albumtitle = ""
+        self.sourceurl = ""
 
 
 
@@ -549,6 +556,15 @@ def getlabelbylangfromitem(item, lang):
         label = item.labels[li]
         if (li == lang):
             print("DEBUG: found label for ", item.getID() ," in lang ", lang ,": ", label)
+            return label
+    return None
+
+def getlabelbyanylangfromitem(item, langs):
+
+    for li in item.labels:
+        label = item.labels[li]
+        if li in langs:
+            print("DEBUG: found label for ", item.getID() ," in lang ", li ,": ", label)
             return label
     return None
 
@@ -820,19 +836,6 @@ def getlanguageqcode(lang):
         return d_langqcode[lang]
     return ""
 
-# get qcode for artist by name from finna:
-# this might need some extra mapping 
-# since there may be multiple people with same name
-#
-def get_finna_artist_qcode(finnarecord):
-    # TODO: add mapping for getting qcode by finna artist name,
-    # otherwise it must be given as command separately
-    if (finnarecord == None):
-        return ""
-    if (finnarecord.artistname == None):
-        return ""
-    return getartistqcode(finnarecord.artistname)
-
 
 def isArtistItem(item):
     instance_of = item.claims.get('P31', [])
@@ -912,15 +915,8 @@ def add_item_value(repo, wditem, prop, value):
     return claim
 
 # todo: other possible parameters
-def add_item_source_url(repo, p_claim, commands, finnarecord = None):
+def add_item_source_url(repo, p_claim, sourceurl):
     
-    sourceurl = ""
-    if (finnarecord != None):
-        sourceurl = finnarecord.sourceref
-
-    if "source" in commands and sourceurl == "":
-        sourceurl = commands['source']
-        
     if (sourceurl == ""):
         return None
 
@@ -938,7 +934,7 @@ def add_item_source_url(repo, p_claim, commands, finnarecord = None):
 # TODO: move parsing and finding qcodes to before starting this,
 # 
 
-def add_album_properties(repo, wditem, commands, finnarecord = None):
+def add_album_properties(repo, wditem, commands, final):
     
     # instance of
     if not 'P31' in wditem.claims:
@@ -954,23 +950,13 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         # note: it might be possible there is more than one artist,
         # such as split-albums, so prepare for a list
         
-        # if finna record is given, try to find by name
-        artist_qcode = get_finna_artist_qcode(finnarecord)
-        if artist_qcode == "" and "artistqid" in commands:
-            # fallback to qid in commands
-            artist_qcode = commands["artistqid"]
-
-        # further fallback if name is given in commands (deprecated)
-        if "artist" in commands and artist_qcode == "":
-            artist_qcode = getartistqcode(commands["artist"])
-        
-        if (artist_qcode != ""):
+        if artist_qcode in final.artists:
             
             print("Adding claim: artist")
             artistclaim = add_item_link(repo, wditem, 'P175', artist_qcode)
 
             # add source if given
-            add_item_source_url(repo, artistclaim, commands, finnarecord)
+            add_item_source_url(repo, artistclaim, final.sourceurl)
 
     # TODO: members of a band in specific album
 
@@ -987,16 +973,10 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
 
     # release date julkaisupäivä (P577) (date formatting?)
     if not 'P577' in wditem.claims:
-        releaseyear = ""
-        if (finnarecord != None):
-            releaseyear = finnarecord.getyear()
-        
-        if "released" in commands and releaseyear == "":
-            releaseyear = commands["released"]
 
-        if (releaseyear != ""):
+        if (final.year != ""):
             # only year now
-            wbdate = getwbdate(int(releaseyear))
+            wbdate = getwbdate(int(final.year))
             
             print("Adding claim: released in")
             claim = pywikibot.Claim(repo, 'P577')
@@ -1004,65 +984,34 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
             claim.setTarget(wbdate)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
             
-            add_item_source_url(repo, claim, commands, finnarecord)
+            add_item_source_url(repo, claim, final.sourceurl)
             
 
     # genre
     if not 'P136' in wditem.claims:
         
-        genreqcodes = list()
+        for gcode in final.genres:
 
-        # may have multiple genres
-        if (finnarecord != None):
-            for gname in finnarecord.genres:
-                
-                # cleanup
-                if (endswith(gname, ";") == True):
-                    gname = removelastchar(gname)
-                    gname = gname.strip()
-                
-                gcodes = searchItembySparql(repo, gname, 'fi')
-                if (gcodes == None):
-                    print("note, no qcode for genre name:", gname)
-                    continue
-                for gq in gcodes:
-                    # avoid duplicates, catch errors
-                    addtolist(genreqcodes, gq)
-
-        for gcode in genreqcodes:
-
-            item = getitembyqcode(repo, gcode)
-            if (isItemInstanceOf(item, 'Q188451') == False):
-                print("skipping item as not proper genre instance:", gcode)
-                continue
-        
             print("Adding claim: genre for ", gcode)
             genreclaim = add_item_link(repo, wditem, 'P136', gcode)
 
             # add source if given
-            add_item_source_url(repo, genreclaim, commands, finnarecord)
+            add_item_source_url(repo, genreclaim, final.sourceurl)
 
 
     # kieli, language(s) of the album - may be multiple
     if not 'P407' in wditem.claims:
         
-        albumlangs = list()
-        if (finnarecord != None):
-            # may be a list
-            albumlangs = finnarecord.getlang()
-
-        for l in albumlangs:
+        for langqcode in final.languages:
             
             # switch to sparql to fetch items by languages:
             # TODO: need a query by specific property with ISO-code instead of label
             
-            langqcode = getlanguageqcode(l)
-            if (langqcode != ""):
-                print("Adding claim: language for ", l)
-                langclaim = add_item_link(repo, wditem, 'P407', langqcode)
+            print("Adding claim: language for ", langqcode)
+            langclaim = add_item_link(repo, wditem, 'P407', langqcode)
 
-                # add source if given
-                add_item_source_url(repo, langclaim, commands, finnarecord)
+            # add source if given
+            add_item_source_url(repo, langclaim, final.sourceurl)
 
     # teoksen tyyppi (P7937)
     if not 'P7937' in wditem.claims:
@@ -1079,40 +1028,14 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
     if not 'P264' in wditem.claims:
         
         # note: might have multiple publishers..
-        pubqcodes = list()
         
-        # try to fetch qcode by name from record (if given)
-        if (finnarecord != None):
-            for pname in finnarecord.publishernames:
-
-                if (endswith(pname, ";") == True):
-                    pname = removelastchar(pname)
-                    pname = pname.strip()
-                
-                pqcodes = searchItembySparql(repo, pname, 'fi')
-                if (pqcodes == None):
-                    print("note, no qcode for publisher:", pname)
-                    continue
-                for pq in pqcodes:
-                    # avoid duplicates, catch errors
-                    addtolist(pubqcodes, pq)
-            
-
-        # todo: also validate that qcode is for a music label or a record company?
-    
         print("Adding claim: record label")
-        for lq in pubqcodes:
-            
-            item = getitembyqcode(repo, lq)
-            if (isRecordLabel(item) == False):
-                print("skipping item as not proper record label instance:", lq)
-                continue
-
+        for lq in final.publishers:
             
             labelclaim = add_item_link(repo, wditem, 'P264', lq)
 
             # add source if given
-            add_item_source_url(repo, labelclaim, commands, finnarecord)
+            add_item_source_url(repo, labelclaim, final.sourceurl)
 
 
     # julkaisupaikka (P291)
@@ -1122,61 +1045,18 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
         # eurooppa
         # suomi
         
-        # TODO: must filter by instance..
-        
-        # note: might have multiple publishers..
-        placeqcodes = list()
-        
-        # try to fetch qcode by name from record (if given)
-        if (finnarecord != None):
-            for pname in finnarecord.publishingplaces:
-                
-                if (endswith(pname, ":") == True):
-                    pname = removelastchar(pname)
-                    pname = pname.strip()
-                # place names might have brackets around, remove before lookup
-                if (pname[0] == '[' and pname[len(pname)-1] == ']'):
-                    pname = pname[1:len(pname)-1]
-
-                # we could shortcut some
-                #if (pname == "maailmanlaajuinen"):
-                #if (pname == "Eurooppa"):
-                #if (pname == "Suomi"):
-                
-                pqcodes = searchItembySparql(repo, pname, True, 'fi')
-                if (pqcodes == None):
-                    print("note, no qcode for place:", pname)
-                    continue
-                for pq in pqcodes:
-                    # avoid duplicates, catch errors
-                    addtolist(placeqcodes, pq)
-
-
-        # todo: also validate that qcode is for a city or a country?
-        
         print("Adding claim: release place")
-        for pq in placeqcodes:
+        for pq in final.places:
             
-            # must be city or country ?
-            #kaupunki (Q515)
-            #valtio (Q7275)
-            #itsenäinen valtio (Q3624078)
-            #maa (Q6256)
-
-            item = getitembyqcode(repo, pq)
-            if (isItemInstanceOf(item, 'Q515') == False 
-                and isItemInstanceOf(item, 'Q7275') == False 
-                and isItemInstanceOf(item, 'Q6256') == False):
-                print("skipping item as not proper place instance:", pq)
-                continue
             print("might be proper place instance:", pq)
             
+            # todo: also validate that qcode is for a city or a country?
             # TODO: we might need even better filtering before enabling this..
 
             #placeclaim = add_item_link(repo, wditem, 'P291', pq)
 
             # add source if given
-            #add_item_source_url(repo, placeclaim, commands, finnarecord)
+            #add_item_source_url(repo, placeclaim, final.sourceurl)
             
 
     # discogs master
@@ -1217,23 +1097,15 @@ def add_album_properties(repo, wditem, commands, finnarecord = None):
             add_item_value(repo, wditem, 'P436', mbgroup)
 
 
-def check_artist(repo, commands, finnarecord = None, lang='fi'):
+def check_artist(repo, final, lang='fi'):
 
-    # try to find qcode by name from finna
-    artistqcode = get_finna_artist_qcode(finnarecord)
-    if artistqcode == "" and "artistqid" in commands:
-        # fallback if qcode is given in commands
-        artistqcode = commands["artistqid"]
-
-    # if name is given in commands (deprecated)
-    if artistqcode == "" and "artist" in commands:
-        artistqcode = getartistqcode(commands["artist"])
-
-    if (len(artistqcode) > 0):
+    for artistqcode in final.artists:
         item = getitembyqcode(repo, artistqcode)
         if (isArtistItem(item) == False):
             print('WARN: qid is not for artist', artistqcode)
             return None
+
+        # TODO: keep labels when multiple artists
         
         artistlabel = getlabelbylangfromitem(item, lang)
         if (artistlabel == None):
@@ -1253,29 +1125,207 @@ def check_artist(repo, commands, finnarecord = None, lang='fi'):
 
 # there is no easy way to do this: album by same name can exist for different artists
 # and labels might not exist for all languages
-def check_if_album_exists(repo, commands):
-    #if "album" not in commands:
+def check_if_album_exists_by_qid(repo, commands):
     
-    album_name = commands["album"]
-    #artistqcode = getartistqcode(commands["artist"])
+    if "albumqid" in commands:
+        albumitem = getitembyqcode(repo, commands['albumqid'])
+        if (albumitem != None):
+            if (isAlbumItem(albumitem) == True):
+                print("album exists with qid", commands['albumqid'])
+            else:
+                print("qid is used by not supported album type", commands['albumqid'])
+            return True
+    return False
 
-    # TODO: search items by name, compare other information
-    # 
-    
-    
-    #albumitem = getitembyqcode(repo, albumqcode)
-    #albumlabel = getlabelbylangfromitem(albumitem, lang)
-    #qlist = getArtistsFromItem(albumitem)
-    #if (artistqcode not in qlist):
-        # not same artist
+def check_if_album_exists_by_name(repo, commands):
+
+    #if "album" not in commands:
+    #    return False
+    #if albumtitle not in finnarecord:
     #    return False
     
-    # now check for year
+    album_name = commands["album"]
+    albums = searchItembySparql(repo, album_name)
+    if (albums == None):
+        return False
+    for al in albums:
+        albumitem = getitembyqcode(repo, albumqid)
+        if (isAlbumItem(albumitem) == False):
+            continue
+        qlist = getArtistsFromItem(albumitem)
+        # check if same artist and same year as well:
+        # arists may have album with same name in different years
+        
     
-    # get property for artist
+    
     
     # for now, just assume it doesn't..
     return False
+
+
+# find wikidata items for different fields before starting writing to wikidata
+#
+def recordstoparams(repo, commands, finnarecord = None):
+    final = FinalParams()
+
+    album_name = ""
+    if (finnarecord != None):
+        album_name = finnarecord.getTitleFromFinna()
+    if album_name == "" and "album" in commands:
+        album_name = commands["album"]
+
+    if (album_name != "" and album_name != None):
+        final.albumtitle = album_name
+        
+        # TODO: checking if album exists needs name, artist, year..
+
+    # updating existing album?
+    albumqid = ""
+    if "albumqid" in commands:
+        albumitem = getitembyqcode(repo, commands['albumqid'])
+        #if (albumitem == None):
+            # qid given but not existing?
+        #supportedlangs = {"fi", "en", "mul"}
+        supportedLangs = "fi", "en", "mul"
+        atitle = getlabelbyanylangfromitem(albumitem, supportedLangs)
+        if (atitle != ""):
+            final.albumtitle = atitle
+
+    releaseyear = ""
+    if (finnarecord != None):
+        releaseyear = finnarecord.getyear()
+    
+    if "released" in commands and releaseyear == "":
+        releaseyear = commands["released"]
+    if (releaseyear != "" and releaseyear != None):
+        final.year = releaseyear
+
+    # TODO: may have multiple artists in some cases
+    # if finna record is given, try to find by name
+    artist_qcode = ""
+    if (finnarecord != None):
+        # TODO: try to find arist by sparql
+        artist_qcode = getartistqcode(finnarecord.artistname)
+
+    if artist_qcode == "" and "artistqid" in commands:
+        # fallback to qid in commands
+        artist_qcode = commands["artistqid"]
+
+    # further fallback if name is given in commands (deprecated)
+    if ("artist" in commands and artist_qcode == ""):
+        artist_qcode = getartistqcode(commands["artist"])
+
+    if (artist_qcode != "" and artist_qcode != None):
+
+        #artistitem = getitembyqcode(repo, artist_qcode)
+        #if (artistitem == None):
+            # qid found but item not existing?
+
+        # avoid duplicates, catch errors
+        addtolist(final.artists, artist_qcode)
+
+    sourceurl = ""
+    if (finnarecord != None):
+        sourceurl = finnarecord.sourceref
+
+    if "source" in commands and sourceurl == "":
+        sourceurl = commands['source']
+    
+    if (sourceurl != ""):
+        final.sourceurl = sourceurl
+
+    # try to fetch qcodes by record (if given)
+    if (finnarecord == None):
+        return final
+
+    # may be a list
+    albumlangs = finnarecord.getlang()
+    for alang in albumlangs:
+        langqcode = getlanguageqcode(alang)
+        if (langqcode != ""):
+            # avoid duplicates, catch errors
+            addtolist(final.languages, langqcode)
+
+
+    # may have multiple genres
+    for gname in finnarecord.genres:
+        
+        # cleanup
+        if (endswith(gname, ";") == True):
+            gname = removelastchar(gname)
+            gname = gname.strip()
+        
+        gcodes = searchItembySparql(repo, gname, 'fi')
+        if (gcodes == None):
+            print("note, no qcode for genre name:", gname)
+            continue
+        for gq in gcodes:
+            item = getitembyqcode(repo, gcode)
+            if (isItemInstanceOf(item, 'Q188451') == False):
+                print("skipping item as not proper genre instance:", gcode)
+                continue
+            # avoid duplicates, catch errors
+            addtolist(final.genres, gq)
+
+    # try to fetch qcode by name from record (if given)
+    for pname in finnarecord.publishernames:
+
+        if (endswith(pname, ";") == True):
+            pname = removelastchar(pname)
+            pname = pname.strip()
+        
+        pqcodes = searchItembySparql(repo, pname, 'fi')
+        if (pqcodes == None):
+            print("note, no qcode for publisher:", pname)
+            continue
+        for pq in pqcodes:
+            item = getitembyqcode(repo, lq)
+            # must be record label or record company
+            if (isRecordLabel(item) == False):
+                print("skipping item as not proper record label instance:", lq)
+                continue
+            # avoid duplicates, catch errors
+            addtolist(final.publishers, pq)
+
+
+    for plname in finnarecord.publishingplaces:
+        
+        if (endswith(plname, ":") == True):
+            plname = removelastchar(plname)
+            plname = plname.strip()
+        # place names might have brackets around, remove before lookup
+        if (plname[0] == '[' and plname[len(plname)-1] == ']'):
+            plname = plname[1:len(plname)-1]
+
+        # we could shortcut some
+        #if (plname == "maailmanlaajuinen"):
+        #if (plname == "Eurooppa"):
+        #if (plname == "Suomi"):
+        
+        pqcodes = searchItembySparql(repo, plname, True, 'fi')
+        if (pqcodes == None):
+            print("note, no qcode for place:", plname)
+            continue
+        
+        for pq in pqcodes:
+            # must be city or country ?
+            #kaupunki (Q515)
+            #valtio (Q7275)
+            #itsenäinen valtio (Q3624078)
+            #maa (Q6256)
+
+            item = getitembyqcode(repo, pq)
+            if (isItemInstanceOf(item, 'Q515') == False 
+                and isItemInstanceOf(item, 'Q7275') == False 
+                and isItemInstanceOf(item, 'Q6256') == False):
+                print("skipping item as not proper place instance:", pq)
+                continue
+            # avoid duplicates, catch errors
+            addtolist(final.places, pq)
+
+
+    return final
+
 
 
 def create_album_item(repo, album_name, artistlabel, release=""):
@@ -1358,8 +1408,8 @@ def check_and_add_labels(item, wtitle):
     # start with supported languages
     copy_labels = {}
     #supportedLabels = "en", "fi", "sv", "fr", "it", "de", "es", "pt", "nl", "da", "nb", "nn", "et", "pl"
-    supportedLabels = "en", "fi", "mul"
-    for lang in supportedLabels:
+    supportedLangs = "en", "fi", "mul"
+    for lang in supportedLangs:
         if lang not in item.labels:
             # example: "fi": "Virtanen"
             copy_labels[lang] = wtitle
@@ -1378,25 +1428,21 @@ def add_album(commands, finnarecord = None):
 
     repo = wdsite.data_repository()
     
-    album_name = ""
-    if (finnarecord != None):
-        album_name = finnarecord.getTitleFromFinna()
-    if album_name == "" and "album" in commands:
-        album_name = commands["album"]
-
+    final = recordstoparams(repo, commands, finnarecord)
+    
     # updating existing album?
     albumqid = ""
     if "albumqid" in commands:
         albumqid = commands['albumqid']
 
-    if (len(album_name) == 0 and len(albumqid) == 0):
-        print('WARN: cannot create, album name and qid missing')
+    if (len(final.albumtitle) == 0 and len(albumqid) == 0):
+        print('WARN: cannot create or update, album name and qid missing')
         return None
 
     # just check given parameter makes sense,
     # if we are just updating an album this might not be necessary,
     # but we should validate it if we are adding it to an album..
-    artistlabel = check_artist(repo, commands, finnarecord)
+    artistlabel = check_artist(repo, final)
     if (artistlabel == None or artistlabel == ""):
         print('WARN: cannot create, artist unknown')
         return None
@@ -1424,7 +1470,7 @@ def add_album(commands, finnarecord = None):
 
     # only add given properties
     print('Adding properties...')
-    add_album_properties(repo, album_item, commands, finnarecord)
+    add_album_properties(repo, album_item, commands, final)
 
     nid = album_item.getID()
     print('All done', nid)
