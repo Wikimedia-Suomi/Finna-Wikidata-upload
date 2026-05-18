@@ -1057,7 +1057,9 @@ def add_album_properties(repo, wditem, commands, final):
 
             # add source if given
             #add_item_source_url(repo, placeclaim, final.sourceurl)
-            
+
+
+def add_album_identifiers(repo, wditem, commands):
 
     # discogs master
     if not 'P1954' in wditem.claims:
@@ -1073,7 +1075,6 @@ def add_album_properties(repo, wditem, commands, final):
             
             print("Adding claim: discogs release")
             add_item_value(repo, wditem, 'P2206', discogs)
-
 
     # metal archives release
     if not 'P2721' in wditem.claims:
@@ -1125,33 +1126,30 @@ def check_artist(repo, final, lang='fi'):
 
 # there is no easy way to do this: album by same name can exist for different artists
 # and labels might not exist for all languages
-def check_if_album_exists_by_qid(repo, commands):
+def check_if_album_exists_by_qid(repo, albumqid):
     
-    if "albumqid" in commands:
-        albumitem = getitembyqcode(repo, commands['albumqid'])
-        if (albumitem != None):
-            if (isAlbumItem(albumitem) == True):
-                print("album exists with qid", commands['albumqid'])
-            else:
-                print("qid is used by not supported album type", commands['albumqid'])
-            return True
+    albumitem = getitembyqcode(repo, albumqid)
+    if (albumitem != None):
+        if (isAlbumItem(albumitem) == True):
+            print("album exists with qid", albumqid)
+        else:
+            print("qid is used by not supported album type", albumqid)
+        return True
+
     return False
 
-def check_if_album_exists_by_name(repo, commands):
 
-    #if "album" not in commands:
-    #    return False
-    #if albumtitle not in finnarecord:
-    #    return False
-    
-    album_name = commands["album"]
-    albums = searchItembySparql(repo, album_name)
+def check_if_album_exists_by_name(repo, albumtitle):
+
+    albums = searchItembySparql(repo, albumtitle, True)
     if (albums == None):
         return False
+
     for al in albums:
         albumitem = getitembyqcode(repo, albumqid)
         if (isAlbumItem(albumitem) == False):
             continue
+
         qlist = getArtistsFromItem(albumitem)
         # check if same artist and same year as well:
         # arists may have album with same name in different years
@@ -1326,11 +1324,9 @@ def recordstoparams(repo, commands, finnarecord = None):
 
     return final
 
+def create_album_item(repo, final, artistlabel):
 
-
-def create_album_item(repo, album_name, artistlabel, release=""):
-
-    if (album_name == None):
+    if (final.albumtitle == None):
         return None
     if (artistlabel == None):
         return None
@@ -1351,19 +1347,19 @@ def create_album_item(repo, album_name, artistlabel, release=""):
     album_desc_fr = "album de " + artistlabel
 
     # more accurate date? parse to year
-    if (len(release) > 0):
+    if (len(final.year) > 0):
         # only year for now, add support for date
-        year = str(release)
+        year = str(final.year)
         album_desc_en = year + " " + album_desc_en
     #    album_desc_fi = album_desc_fi + " vuodelta " + str(year)
         album_desc_sv = album_desc_sv + " från " + year
         album_desc_fr = album_desc_fr + " sorti en " + year
     
-    data = {"labels": {"en": album_name, "fi": album_name, "sv": album_name, "fr": album_name, "mul": album_name},
+    data = {"labels": {"en": final.albumtitle, "fi": final.albumtitle, "sv": final.albumtitle, "fr": final.albumtitle, "mul": final.albumtitle},
     "descriptions": {"en": album_desc_en, "sv": album_desc_sv, "fr": album_desc_fr}}
 
 
-    print('Creating a new album item for', album_name)
+    print('Creating a new album item for', final.albumtitle)
 
     #create item
     newitem = pywikibot.ItemPage(repo, None)
@@ -1449,28 +1445,26 @@ def add_album(commands, finnarecord = None):
 
     album_item = {}
     if (len(albumqid) == 0):
-
-        # more accurate date? parse to year
-        releaseyear = ""
-        if (finnarecord != None):
-            releaseyear = finnarecord.getyear()
-
-        if "released" in commands and releaseyear == "":
-            # only year for now
-            releaseyear = commands["released"]
-        
-        album_item = create_album_item(repo, album_name, artistlabel, releaseyear)
+        # create new item by given name:
+        # add description with artist and year
+        #
+        album_item = create_album_item(repo, final, artistlabel)
     else:
-        # update/expand existing item
+        # update/expand existing album
         album_item = getitembyqcode(repo, albumqid)
         if (isAlbumItem(album_item) == False):
             print('WARN: qid is not for album', albumqid)
             return None
-        check_and_add_labels(album_item, album_name)
+        # check if item needs label fixing
+        check_and_add_labels(album_item, final.albumtitle)
 
     # only add given properties
     print('Adding properties...')
-    add_album_properties(repo, album_item, commands, final)
+    add_album_properties(repo, album_item, final)
+
+    # identifiers for other databases and so on
+    print('Adding identifiers...')
+    add_album_identifiers(repo, album_item, commands)
 
     nid = album_item.getID()
     print('All done', nid)
