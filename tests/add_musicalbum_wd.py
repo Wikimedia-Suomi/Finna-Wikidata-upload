@@ -379,6 +379,7 @@ class FinalParams:
         self.year = ""
         self.albumtitle = ""
         self.sourceurl = ""
+        self.releasetype = "" # studio/live..
 
 
 
@@ -732,7 +733,7 @@ def getartistqcode(artistname):
     return ""
 
 # todo: read config for mapping
-def gettypeqcode(commands):
+def gettypeqcode(releasetype):
 
     # mapping type to qcode
     d_typetoqcode = dict()
@@ -741,12 +742,8 @@ def gettypeqcode(commands):
     d_typetoqcode["kokoelma-albumi"] = "Q222910"
     d_typetoqcode["soundtrack-albumi"] = "Q4176708"
 
-    if "type" not in commands:
-        return ""
-
-    reltype = commands["type"]
-    if reltype in d_typetoqcode:
-        return d_typetoqcode[reltype]
+    if releasetype in d_typetoqcode:
+        return d_typetoqcode[releasetype]
     return ""
 
 
@@ -876,6 +873,21 @@ def isAlbumItem(item):
         
     return False
 
+def isGenreItem(item):
+    
+    # TODO: may be subclass of ?
+    
+    instance_of = item.claims.get('P31', [])
+    for claim in instance_of:
+
+        qid = claim.getTarget().id
+        
+        # musiikkityyli (Q188451)
+        if (qid == 'Q188451'):
+            return True
+        
+    return False
+
 def isRecordLabel(item):
     instance_of = item.claims.get('P31', [])
     for claim in instance_of:
@@ -934,7 +946,7 @@ def add_item_source_url(repo, p_claim, sourceurl):
 # TODO: move parsing and finding qcodes to before starting this,
 # 
 
-def add_album_properties(repo, wditem, commands, final):
+def add_album_properties(repo, wditem, final):
     
     # instance of
     if not 'P31' in wditem.claims:
@@ -952,7 +964,7 @@ def add_album_properties(repo, wditem, commands, final):
         
         for artist_qcode in final.artists:
             
-            print("Adding claim: artist")
+            print("Adding claim: artist", artist_qcode)
             artistclaim = add_item_link(repo, wditem, 'P175', artist_qcode)
 
             # add source if given
@@ -1015,12 +1027,11 @@ def add_album_properties(repo, wditem, commands, final):
 
     # teoksen tyyppi (P7937)
     if not 'P7937' in wditem.claims:
-        typeqcode = gettypeqcode(commands)
-        if (typeqcode != ""):
+        if (final.releasetype != ""):
         
-            print("Adding claim: type")
+            print("Adding claim: type", final.releasetype)
             claim = pywikibot.Claim(repo, 'P7937')
-            target = pywikibot.ItemPage(repo, typeqcode) 
+            target = pywikibot.ItemPage(repo, final.releasetype) 
             claim.setTarget(target)
             wditem.addClaim(claim)#, summary='Adding 1 claim')
 
@@ -1029,9 +1040,9 @@ def add_album_properties(repo, wditem, commands, final):
         
         # note: might have multiple publishers..
         
-        print("Adding claim: record label")
         for lq in final.publishers:
             
+            print("Adding claim: record label", lq)
             labelclaim = add_item_link(repo, wditem, 'P264', lq)
 
             # add source if given
@@ -1045,10 +1056,9 @@ def add_album_properties(repo, wditem, commands, final):
         # eurooppa
         # suomi
         
-        print("Adding claim: release place")
         for pq in final.places:
             
-            print("might be proper place instance:", pq)
+            print("Adding claim: release place", pq)
             
             # todo: also validate that qcode is for a city or a country?
             # TODO: we might need even better filtering before enabling this..
@@ -1189,6 +1199,11 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (atitle != ""):
             final.albumtitle = atitle
 
+    if "type" in commands:
+        typeqcode = gettypeqcode(commands["type"])
+        if (typeqcode != ""):
+            final.releasetype = typeqcode
+
     releaseyear = ""
     if (finnarecord != None):
         releaseyear = finnarecord.getyear()
@@ -1258,12 +1273,29 @@ def recordstoparams(repo, commands, finnarecord = None):
             print("note, no qcode for genre name:", gname)
             continue
         for gq in gcodes:
-            item = getitembyqcode(repo, gcode)
-            if (isItemInstanceOf(item, 'Q188451') == False):
-                print("skipping item as not proper genre instance:", gcode)
+            item = getitembyqcode(repo, gq)
+            if (isGenreItem(item) == False):
+                print("skipping item as not proper genre instance:", gq)
                 continue
             # avoid duplicates, catch errors
             addtolist(final.genres, gq)
+
+    # if genre was given manually
+    if "genre" in commands:
+        print("looking for genre:", commands["genre"])
+
+        gcodes = searchItembySparql(repo, commands["genre"], 'fi')
+        if (gcodes == None):
+            print("note, no qcode for genre name:", commands["genre"])
+        else:
+            for gq in gcodes:
+                item = getitembyqcode(repo, gq)
+                if (isGenreItem(item) == False):
+                    print("skipping item as not proper genre instance:", gq)
+                    continue
+                # avoid duplicates, catch errors
+                addtolist(final.genres, gq)
+
 
     # try to fetch qcode by name from record (if given)
     for pname in finnarecord.publishernames:
@@ -1277,13 +1309,30 @@ def recordstoparams(repo, commands, finnarecord = None):
             print("note, no qcode for publisher:", pname)
             continue
         for pq in pqcodes:
-            item = getitembyqcode(repo, lq)
+            item = getitembyqcode(repo, pq)
             # must be record label or record company
             if (isRecordLabel(item) == False):
-                print("skipping item as not proper record label instance:", lq)
+                print("skipping item as not proper record label instance:", pq)
                 continue
             # avoid duplicates, catch errors
             addtolist(final.publishers, pq)
+
+    # if publisher was given manually
+    if "muslabel" in commands:
+        print("looking for publisher:", commands["muslabel"])
+
+        pqcodes = searchItembySparql(repo, commands["muslabel"], 'fi')
+        if (pqcodes == None):
+            print("note, no qcode for publisher:", commands["muslabel"])
+        else:
+            for pq in pqcodes:
+                item = getitembyqcode(repo, pq)
+                # must be record label or record company
+                if (isRecordLabel(item) == False):
+                    print("skipping item as not proper record label instance:", pq)
+                    continue
+                # avoid duplicates, catch errors
+                addtolist(final.publishers, pq)
 
 
     for plname in finnarecord.publishingplaces:
@@ -1460,7 +1509,7 @@ def add_album(commands, finnarecord = None):
 
     # only add given properties
     print('Adding properties...')
-    add_album_properties(repo, album_item, commands, final)
+    add_album_properties(repo, album_item, final)
 
     # identifiers for other databases and so on
     print('Adding identifiers...')
