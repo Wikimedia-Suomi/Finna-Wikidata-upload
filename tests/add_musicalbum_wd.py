@@ -1216,26 +1216,34 @@ def recordstoparams(repo, commands, finnarecord = None):
     # TODO: may have multiple artists in some cases
     # if finna record is given, try to find by name
     artist_qcode = ""
-    if (finnarecord != None):
-        # TODO: try to find arist by sparql
-        artist_qcode = getartistqcode(finnarecord.artistname)
-
-    if artist_qcode == "" and "artistqid" in commands:
-        # fallback to qid in commands
+    if "artistqid" in commands:
+        # override given in commands? (name is ambigious?)
         artist_qcode = commands["artistqid"]
+        
+        artistitem = getitembyqcode(repo, artist_qcode)
+        if (isArtistItem(artistitem) == False):
+            print("skipping item as not proper artist instance:", artist_qcode)
+        else:
+            # avoid duplicates, catch errors
+            addtolist(final.artists, artist_qcode)
 
-    # further fallback if name is given in commands (deprecated)
-    if ("artist" in commands and artist_qcode == ""):
-        artist_qcode = getartistqcode(commands["artist"])
+    if (artist_qcode == "" and finnarecord != None):
+        # try to find artist by sparql,
+        # allow override by command as this may be ambigious to resolve automatically
+        # so only search if qcode is not given
+        acodes = searchItembySparql(repo, finnarecord.artistname, 'fi')
+        if (acodes == None):
+            print("note, no qcode for artist:", finnarecord.artistname)
+        else:
+            for aq in acodes:
+                item = getitembyqcode(repo, aq)
+                # must be a humand or a band
+                if (isArtistItem(item) == False):
+                    print("skipping item as not proper artist instance:", aq)
+                    continue
+                # avoid duplicates, catch errors
+                addtolist(final.artists, aq)
 
-    if (artist_qcode != "" and artist_qcode != None):
-
-        #artistitem = getitembyqcode(repo, artist_qcode)
-        #if (artistitem == None):
-            # qid found but item not existing?
-
-        # avoid duplicates, catch errors
-        addtolist(final.artists, artist_qcode)
 
     sourceurl = ""
     if (finnarecord != None):
@@ -1563,7 +1571,7 @@ def add_album_from_finna(commands):
 
 support_args = ["album",
                 "albumqid",
-                "artist",
+                #"artist",
                 "artistqid",
                 "muslabel",
                 "muslabelqid",
@@ -1604,10 +1612,10 @@ def parse_command_pars(argv):
             val = val.replace('"', "") # remove double quotes from command line
             commands[key] = val
             
-        if (key == "artist"):
-            if (getartistqcode(commands["artist"]) == ""):
-                print("WARN: no qcode for artist", commands["artist"])
-                exit()
+        #if (key == "artist"):
+        #    if (getartistqcode(commands["artist"]) == ""):
+        #        print("WARN: no qcode for artist", commands["artist"])
+        #        exit()
         # switch to sparql
         #if (key == "muslabel"):
         #    if (getpublisherqcode(commands["muslabel"]) == ""):
