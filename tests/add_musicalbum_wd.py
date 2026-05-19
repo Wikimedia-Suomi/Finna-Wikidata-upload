@@ -950,7 +950,7 @@ def add_album_properties(repo, wditem, commands, final):
         # note: it might be possible there is more than one artist,
         # such as split-albums, so prepare for a list
         
-        if artist_qcode in final.artists:
+        for artist_qcode in final.artists:
             
             print("Adding claim: artist")
             artistclaim = add_item_link(repo, wditem, 'P175', artist_qcode)
@@ -1460,7 +1460,7 @@ def add_album(commands, finnarecord = None):
 
     # only add given properties
     print('Adding properties...')
-    add_album_properties(repo, album_item, final)
+    add_album_properties(repo, album_item, commands, final)
 
     # identifiers for other databases and so on
     print('Adding identifiers...')
