@@ -667,6 +667,8 @@ def searchItembySparql(repo, text, witharticle=False, lang='fi'):
             continue
 
         # TODO: compare with alternate label(s) if there are multiple
+        # might have difference in upper/lower case in some cases? (Of, And..)
+        #if (lbl != text and lbl.lower() != text.lower()):
         if (lbl != text):
             # not correct label for some reason
             print("label is not correct: ", lbl)
@@ -710,27 +712,6 @@ def checkproperties(repo, itemqcode):
 
     return True
 
-# todo: read config for mapping
-def getartistqcode(artistname):
-
-    # mapping name to artist qcode
-    d_artisttoqcode = dict()
-    d_artisttoqcode["Soulspell"] = "Q4049800"
-    d_artisttoqcode["SoulSpell"] = "Q4049800"
-    d_artisttoqcode["Crystal Lake"] = "Q5191254"
-    d_artisttoqcode["Beyond the Black"] = "Q19520941"
-    d_artisttoqcode["Havukruunu"] = "Q55220242"
-    d_artisttoqcode["Corpus Christii"] = "Q11855528"
-    d_artisttoqcode["Suotana"] = "Q53789374"
-    d_artisttoqcode["Halavatun papat"] = "Q11861186"
-    
-    print("looking fo artist", artist)
-    
-    if artistname in d_artisttoqcode:
-        return d_artisttoqcode[artistname]
-
-    print("artist not found", d_artisttoqcode)
-    return ""
 
 # todo: read config for mapping
 def gettypeqcode(releasetype):
@@ -761,26 +742,6 @@ def getgenreqcode(genre):
         return d_genretoqcode[genre]
     return ""
 
-# todo: read config for mapping
-def getpublisherqcode(muslabel):
-
-    # mapping label to qcode
-    d_labeltoqcode = dict()
-    d_labeltoqcode["Nuclear Blast"] = "Q158886"
-    d_labeltoqcode["Nuclear Blast Records"] = "Q158886"
-    d_labeltoqcode["Napalm Records"] = "Q693194"
-    d_labeltoqcode["Century Media Records"] = "Q158867"
-    d_labeltoqcode["Spikefarm Records"] = "Q51794339"
-    d_labeltoqcode["Naturmacht Productions"] = "Q73783815"
-    d_labeltoqcode["Avantgarde Music"] = "Q790187"
-    d_labeltoqcode["Rockshots Records"] = "Q117885298"
-    d_labeltoqcode["Warner Music Finland"] = "Q10831860"
-    d_labeltoqcode["Inverse Records"] = "Q23045098"
-    d_labeltoqcode["Candlelight Records"] = "Q852900"
-    
-    if muslabel in d_labeltoqcode:
-        return d_labeltoqcode[muslabel]
-    return ""
 
 # todo: read config for mapping?
 # don't need many so might as well hard-code?
