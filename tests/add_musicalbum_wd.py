@@ -1216,6 +1216,39 @@ def recordstoparams(repo, commands, finnarecord = None):
     if (sourceurl != ""):
         final.sourceurl = sourceurl
 
+    # if genre was given manually
+    if "genre" in commands:
+        print("looking for genre:", commands["genre"])
+
+        gcodes = searchItembySparql(repo, commands["genre"], 'fi')
+        if (gcodes == None):
+            print("note, no qcode for genre name:", commands["genre"])
+        else:
+            for gq in gcodes:
+                item = getitembyqcode(repo, gq)
+                if (isGenreItem(item) == False):
+                    print("skipping item as not proper genre instance:", gq)
+                    continue
+                # avoid duplicates, catch errors
+                addtolist(final.genres, gq)
+
+    # if publisher was given manually
+    if "muslabel" in commands:
+        print("looking for publisher:", commands["muslabel"])
+
+        pqcodes = searchItembySparql(repo, commands["muslabel"], 'fi')
+        if (pqcodes == None):
+            print("note, no qcode for publisher:", commands["muslabel"])
+        else:
+            for pq in pqcodes:
+                item = getitembyqcode(repo, pq)
+                # must be record label or record company
+                if (isRecordLabel(item) == False):
+                    print("skipping item as not proper record label instance:", pq)
+                    continue
+                # avoid duplicates, catch errors
+                addtolist(final.publishers, pq)
+
     # try to fetch qcodes by record (if given)
     if (finnarecord == None):
         return final
@@ -1249,23 +1282,6 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.genres, gq)
 
-    # if genre was given manually
-    if "genre" in commands:
-        print("looking for genre:", commands["genre"])
-
-        gcodes = searchItembySparql(repo, commands["genre"], 'fi')
-        if (gcodes == None):
-            print("note, no qcode for genre name:", commands["genre"])
-        else:
-            for gq in gcodes:
-                item = getitembyqcode(repo, gq)
-                if (isGenreItem(item) == False):
-                    print("skipping item as not proper genre instance:", gq)
-                    continue
-                # avoid duplicates, catch errors
-                addtolist(final.genres, gq)
-
-
     # try to fetch qcode by name from record (if given)
     for pname in finnarecord.publishernames:
 
@@ -1285,24 +1301,6 @@ def recordstoparams(repo, commands, finnarecord = None):
                 continue
             # avoid duplicates, catch errors
             addtolist(final.publishers, pq)
-
-    # if publisher was given manually
-    if "muslabel" in commands:
-        print("looking for publisher:", commands["muslabel"])
-
-        pqcodes = searchItembySparql(repo, commands["muslabel"], 'fi')
-        if (pqcodes == None):
-            print("note, no qcode for publisher:", commands["muslabel"])
-        else:
-            for pq in pqcodes:
-                item = getitembyqcode(repo, pq)
-                # must be record label or record company
-                if (isRecordLabel(item) == False):
-                    print("skipping item as not proper record label instance:", pq)
-                    continue
-                # avoid duplicates, catch errors
-                addtolist(final.publishers, pq)
-
 
     for plname in finnarecord.publishingplaces:
         
