@@ -623,7 +623,8 @@ def searchItembySparql(repo, text, witharticle=False, lang='fi'):
     #query += ' FILTER(CONTAINS(LCASE(?itemLabel), "' + genre + '"@' + lang +')).'
     #query += ' } limit 10'
 
-    query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE {'
+    #query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE {'
+    query = 'SELECT distinct ?item ?itemLabel WHERE {'
     query += ' ?item ?label "'+ text +'"@' + lang + '.' # or alternative label(s)
     if (witharticle == True):
         query += ' ?article schema:about ?item .' # not useful if there is no article in wikipedia? but needed to filter out some other odd things..
@@ -1263,7 +1264,7 @@ def recordstoparams(repo, commands, finnarecord = None):
         # try to find artist by sparql,
         # allow override by command as this may be ambigious to resolve automatically
         # so only search if qcode is not given
-        acodes = searchItembySparql(repo, finnarecord.artistname, 'fi')
+        acodes = searchItembySparql(repo, finnarecord.artistname, False, 'fi')
         if (acodes == None):
             print("note, no qcode for artist:", finnarecord.artistname)
         else:
@@ -1291,7 +1292,7 @@ def recordstoparams(repo, commands, finnarecord = None):
     if "genre" in commands:
         print("looking for genre:", commands["genre"])
 
-        gcodes = searchItembySparql(repo, commands["genre"], 'fi')
+        gcodes = searchItembySparql(repo, commands["genre"], True, 'fi')
         if (gcodes == None):
             print("note, no qcode for genre name:", commands["genre"])
         else:
@@ -1307,7 +1308,7 @@ def recordstoparams(repo, commands, finnarecord = None):
     if "muslabel" in commands:
         print("looking for publisher:", commands["muslabel"])
 
-        pqcodes = searchItembySparql(repo, commands["muslabel"], 'fi')
+        pqcodes = searchItembySparql(repo, commands["muslabel"], True, 'fi')
         if (pqcodes == None):
             print("note, no qcode for publisher:", commands["muslabel"])
         else:
@@ -1343,7 +1344,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             gname = removelastchar(gname)
             gname = gname.strip()
         
-        gcodes = searchItembySparql(repo, gname, 'fi')
+        gcodes = searchItembySparql(repo, gname, True, 'fi')
         if (gcodes == None):
             print("note, no qcode for genre name:", gname)
             continue
@@ -1362,7 +1363,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             pname = removelastchar(pname)
             pname = pname.strip()
         
-        pqcodes = searchItembySparql(repo, pname, 'fi')
+        pqcodes = searchItembySparql(repo, pname, True, 'fi')
         if (pqcodes == None):
             print("note, no qcode for publisher:", pname)
             continue
