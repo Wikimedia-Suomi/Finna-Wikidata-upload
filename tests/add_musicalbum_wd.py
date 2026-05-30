@@ -76,6 +76,8 @@ class FinnaRecord:
         #self.releaseyear = None
         self.languagecode = None
         self.origlangcode = None
+        self.duration = None
+        #self.releaseformat = None # CD, vinyylilevy, DVD..
         
     # simple checks if received record could be usable
     def isFinnaRecordOk(self):
@@ -302,9 +304,6 @@ class FinnaRecord:
         for child in record:
             print(child.tag, child.attrib)
 
-        #publishingplaces = list()
-        #publishernames = list()
-
         # we can use datafield tag-attribute values to determine what they have,
         # and subfield code-attribute for more specifics
         #datafields = root.findall(".//datafield/subfield")
@@ -317,7 +316,7 @@ class FinnaRecord:
             dind1 = df.get("ind1") # not sure what the values here are..
             dind2 = df.get("ind2") # not sure what the values here are..
             
-            print("tag,", dftag, "ind1", dind1, "ind2", dind2)
+            #print("tag,", dftag, "ind1", dind1, "ind2", dind2)
 
             # subfield and attributes
             #subfields = df.findall("subfield")
@@ -326,7 +325,7 @@ class FinnaRecord:
                 sfcode = sf.get("code")
                 sftext = sf.text
 
-                print("code,", sfcode, "text", sftext)
+                print("tag,", dftag, "ind1", dind1, "ind2", dind2, "code,", sfcode, "text", sftext)
                 
                 # if dftag == 110, ind1 == 2, ind2 == " " and sfcode == a -> artist name 
                 # if dftag == 110, ind1 == 2, ind2 == " " and sfcode == e -> "esittäjä"
@@ -348,6 +347,9 @@ class FinnaRecord:
                     # cleanup, don't add duplicates
                     cleanupaddtolist(self.publishernames, sftext)
                     
+                # <datafield tag="260" ind1=" " ind2=" "><subfield code="a">[Tampere] :</subfield><subfield code="b">Poko Records,</subfield><subfield code="c">℗ 1992.</subfield>
+                # -> publisher, copyright, release
+                    
                 # <datafield tag="655" ind1=" " ind2="7"><subfield code="a">popmusiikki</subfield>
                 if (dftag == "655" and dind1 == " " and dind2 == 7 and sfcode == "a"): # -> genre
                     # cleanup, don't add duplicates
@@ -356,12 +358,25 @@ class FinnaRecord:
                 # if dftag == 264, ind1 == " ", ind2 == 1 and sfcode == c -> year 
 
                 # if dftag == 264, ind1 == " ", ind2 == 4 and sfcode == c -> year 
-
-        print("parsed fields")
-
-        #self.publishernames = publishernames
-        #self.publishingplaces = publishingplaces
                 
+                # kesto
+                #<datafield tag="306" ind1=" " ind2=" "><subfield code="a">000349</subfield> # -> kesto 3'49
+                #<datafield tag="306" ind1=" " ind2=" "><subfield code="a">000302</subfield> # -> kesto 3'02
+                if (dftag == "306" and dind1 == " " and dind2 == " " and sfcode == "a"): #
+                    strduration = sftext
+                    if (len(sftext) == 6):
+                        strhour = sftext[0:2]
+                        strmin = sftext[2:4]
+                        strsec = sftext[4:6]
+                        print("found duration: ", strhour ,":", strmin, ":", strsec)
+                        ihour = int(strhour)
+                        imin = int(strmin)
+                        isec = int(strsec)
+                        isec += imin * 60
+                        isec += ihour * 60 * 60
+                        self.duration = str(isec)
+
+        print("parsed fields in xml record")
         return True
 
 # / class FinnaRecord
@@ -380,6 +395,8 @@ class FinalParams:
         self.albumtitle = ""
         self.sourceurl = ""
         self.releasetype = "" # studio/live..
+        self.duration = ""
+        #self.releaseformat = list() # CD/LP/DVD..
 
 
 
@@ -606,7 +623,7 @@ def searchItembySparql(repo, text, witharticle=False, lang='fi'):
     #query += ' FILTER(CONTAINS(LCASE(?itemLabel), "' + genre + '"@' + lang +')).'
     #query += ' } limit 10'
 
-    query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE{'
+    query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE {'
     query += ' ?item ?label "'+ text +'"@' + lang + '.' # or alternative label(s)
     if (witharticle == True):
         query += ' ?article schema:about ?item .' # not useful if there is no article in wikipedia? but needed to filter out some other odd things..
@@ -700,6 +717,15 @@ def getwbdate(year, month=0, day=0):
         #print("DEBUG: setting year only")
         return pywikibot.WbTime(year)
 
+# pywikibot/wikidata expects specific type
+def getwbquantity(repo, amount, unit):
+    
+    # needs unit item so find it by qid
+    unititem = pywikibot.ItemPage(repo, unit) 
+    
+    # pywikibot.WbQuantity(amount, unit=None, error=None, site=None)
+    return pywikibot.WbQuantity(amount, unit=unititem)
+
 def checkproperties(repo, itemqcode):
     if (len(itemqcode) == 0):
         return False
@@ -727,6 +753,24 @@ def gettypeqcode(releasetype):
         return d_typetoqcode[releasetype]
     return ""
 
+
+def getdistributionqcode(dist):
+
+    # for jakelumuoto (P437)
+    # - CD-levy (Q34467)
+    # - CD single englanti (Q719645)
+    # - vinyylilevy (Q178588)
+    # - 7 tuuman single (Q6128115)
+    # - digitaalinen jakelu (Q269415)
+    # - musiikin lataus (Q6473564)
+    # - musiikin suoratoisto (Q15982450)
+    
+    d_disttoqcode = dict()
+    d_disttoqcode["CD-levy"] = "Q34467"
+
+    if dist in d_disttoqcode:
+        return d_disttoqcode[dist]
+    return ""
 
 # todo: read config for mapping
 def getgenreqcode(genre):
@@ -828,8 +872,11 @@ def isAlbumItem(item):
         # musiikkialbumi (Q482994)
         if (qid == 'Q482994'):
             return True
-        #EP-levy (Q169930)
+        # EP-levy (Q169930)
         if (qid == 'Q169930'):
+            return True
+        # single (Q134556)
+        if (qid == 'Q134556'):
             return True
         
     return False
@@ -899,7 +946,20 @@ def add_item_source_url(repo, p_claim, sourceurl):
     u_claim.setTarget(sourceurl)
     p_claim.addSource(u_claim)
 
-# todo: other sources to use? -> must have other related properties and qualifiers..
+    # todo: other sources to use? -> must have other related properties and qualifiers..
+
+
+# todo: test this:
+# parameters should be qid of actual unit
+#def add_item_unit_qualifier(repo, p_claim, unit):
+    
+#    if (unit == ""):
+#        return None
+
+#    prop = 'Q1790144' # unit property for unit qualifier
+#    u_claim = pywikibot.Claim(repo, prop, is_reference=False, is_qualifier=True)
+#    u_claim.setTarget(unit)
+#    p_claim.addSource(u_claim)
 
 
 # todo: use data from record instead from commandline
@@ -936,14 +996,25 @@ def add_album_properties(repo, wditem, final):
     # tuottaja (P162)
 
     # kappalelista (P658) ja taideteoksen osien lukumäärä (P2635) (ääniraitojen määrä)
-    
-    # kesto (P2047) (sekuntia)
-    
+
     # jakelumuoto (P437), LP, CD, digitaalinen jakelu..
 
     # äänityspaikka (P483)
     # äänitysajankohta (P10135)
+    
+    # kesto (P2047) (sekuntia)
+    if not 'P2047' in wditem.claims:
 
+        # need to format into WbQuantity
+        if (final.duration != ""):
+            wbquant = getwbquantity(repo, final.duration, 'Q11574')
+            claim = pywikibot.Claim(repo, 'P2047')
+            
+            claim.setTarget(wbquant)
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
+            
+            add_item_source_url(repo, claim, final.sourceurl)
+ 
     # release date julkaisupäivä (P577) (date formatting?)
     if not 'P577' in wditem.claims:
 
@@ -1252,6 +1323,9 @@ def recordstoparams(repo, commands, finnarecord = None):
     # try to fetch qcodes by record (if given)
     if (finnarecord == None):
         return final
+    
+    if (finnarecord.duration != None):
+        final.duration = finnarecord.duration
 
     # may be a list
     albumlangs = finnarecord.getlang()
@@ -1260,7 +1334,6 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (langqcode != ""):
             # avoid duplicates, catch errors
             addtolist(final.languages, langqcode)
-
 
     # may have multiple genres
     for gname in finnarecord.genres:
