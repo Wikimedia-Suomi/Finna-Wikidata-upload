@@ -97,6 +97,8 @@ def isItemInstanceOf(item, qcode):
 # some items in wikidata might not have finnish label, but might have in "mul" or english, or vice versa..
 def searchItembySparql(repo, text, instance, lang='fi'):
 
+    # TODO: search with alternate label as well?
+
     print("DEBUG: searching item with label: ", text)
 
     endpoint = 'https://query.wikidata.org/sparql'
@@ -112,7 +114,7 @@ def searchItembySparql(repo, text, instance, lang='fi'):
     #query += ' } limit 10'
 
     query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE{'
-    query += ' ?item ?label "'+ text +'"@' + lang + '.'
+    query += ' ?item ?label "'+ text +'"@' + lang + '.' # or alternative label(s)
     query += ' ?article schema:about ?item .'
     query += ' ?article schema:inLanguage "' + lang + '" .' # note part of below
     query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.'
@@ -323,6 +325,10 @@ def isBandItem(item):
         if (qid == 'Q5741069'):
             return True
         
+        #muusikkoduo (Q9212979)
+        if (qid == 'Q9212979'):
+            return True
+        
     return False
 
 def getArtistsFromItem(item):
@@ -363,7 +369,7 @@ def add_item_source_url(repo, p_claim, commands):
 
 # todo: other sources to use? -> must have other related properties and qualifiers..
 
-def add_band_properties(repo, wditem, commands):
+def add_band_properties(repo, wditem, commands, finnarecord = None):
 
     # instance of
     if not 'P31' in wditem.claims:
@@ -398,7 +404,7 @@ def add_band_properties(repo, wditem, commands):
             genreclaim = add_item_link(repo, wditem, 'P136', genreqcode)
 
             # add source if given
-            add_item_source_url(repo, genreclaim, commands, finnarecord)
+            add_item_source_url(repo, genreclaim, commands)
 
 
     # alkuperämaa: P495
@@ -410,7 +416,7 @@ def add_band_properties(repo, wditem, commands):
             countryclaim = add_item_link(repo, wditem, 'P495', countryqcode)
 
             # add source if given
-            add_item_source_url(repo, countryclaim, commands, finnarecord)
+            add_item_source_url(repo, countryclaim, commands)
             
 
     # työskentelyajan alku (P2031)
@@ -464,7 +470,7 @@ def add_band_properties(repo, wditem, commands):
             labelclaim = add_item_link(repo, wditem, 'P264', labelqcode)
 
             # add source if given
-            add_item_source_url(repo, labelclaim, commands, finnarecord)
+            add_item_source_url(repo, labelclaim, commands)
 
     # perustamispaikka (P740)
     
