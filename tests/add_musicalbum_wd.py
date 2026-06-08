@@ -603,10 +603,12 @@ def isItemInstanceOf(item, qcode):
     print("item is not instance of:", qcode)
     return False
 
+#def runSparqlQuery(repo, query):
+
 # note that while finna might give items in finnish, also swedish and english are possible..
 # and if other sources are queried those might be in english.
 # some items in wikidata might not have finnish label, but might have in "mul" or english, or vice versa..
-def searchItembySparql(repo, text, witharticle=False, lang='fi'):
+def searchItembySparql(repo, text, witharticle=False, lang='fi', instanceof=None):
 
     print("DEBUG: searching item with label: ", text)
 
@@ -626,11 +628,20 @@ def searchItembySparql(repo, text, witharticle=False, lang='fi'):
     #query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE {'
     query = 'SELECT distinct ?item ?itemLabel WHERE {'
     query += ' ?item ?label "'+ text +'"@' + lang + '.' # or alternative label(s)
+    if (instanceof != None):
+        query += ' ?item wdt:P31 wd:' + instanceof + ' .'
+
     if (witharticle == True):
         query += ' ?article schema:about ?item .' # not useful if there is no article in wikipedia? but needed to filter out some other odd things..
+        
     query += ' ?article schema:inLanguage "' + lang + '" .' # note part of below
     #query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.' # not useful if there is no article in wikipedia?
     query += ' SERVICE wikibase:label { bd:serviceParam wikibase:language "' + lang + '". } }'
+
+    # example:
+    # SELECT ?item WHERE { ?item wdt:P31 wd:Q42 } LIMIT 10
+    
+    # -> must be able to give list of qcodes for instance..
 
 
     print("DEBUG: using endpoint: ", endpoint)
@@ -689,7 +700,7 @@ def searchItembySparql(repo, text, witharticle=False, lang='fi'):
         #if (lbl != text and lbl.lower() != text.lower()):
         if (lbl != text):
             # not correct label for some reason
-            print("label is not correct: ", lbl)
+            print("label does not match search: ", lbl)
             continue
 
         # we would want to verify item is instance of correct type:
@@ -1185,7 +1196,7 @@ def check_if_album_exists_by_qid(repo, albumqid):
 def check_if_album_exists_by_name(repo, albumtitle):
 
     albums = searchItembySparql(repo, albumtitle, True)
-    if (albums == None):
+    if (len(albums) == 0):
         return False
 
     for al in albums:
@@ -1265,17 +1276,17 @@ def recordstoparams(repo, commands, finnarecord = None):
         # allow override by command as this may be ambigious to resolve automatically
         # so only search if qcode is not given
         acodes = searchItembySparql(repo, finnarecord.artistname, False, 'fi')
-        if (acodes == None):
+        if (len(acodes) == 0):
             print("note, no qcode for artist:", finnarecord.artistname)
-        else:
-            for aq in acodes:
-                item = getitembyqcode(repo, aq)
-                # must be a humand or a band
-                if (isArtistItem(item) == False):
-                    print("skipping item as not proper artist instance:", aq)
-                    continue
-                # avoid duplicates, catch errors
-                addtolist(final.artists, aq)
+
+        for aq in acodes:
+            item = getitembyqcode(repo, aq)
+            # must be a humand or a band
+            if (isArtistItem(item) == False):
+                print("skipping item as not proper artist instance:", aq)
+                continue
+            # avoid duplicates, catch errors
+            addtolist(final.artists, aq)
 
 
     sourceurl = ""
@@ -1293,33 +1304,38 @@ def recordstoparams(repo, commands, finnarecord = None):
         print("looking for genre:", commands["genre"])
 
         gcodes = searchItembySparql(repo, commands["genre"], True, 'fi')
-        if (gcodes == None):
+        if (len(gcodes) == 0):
             print("note, no qcode for genre name:", commands["genre"])
-        else:
-            for gq in gcodes:
-                item = getitembyqcode(repo, gq)
-                if (isGenreItem(item) == False):
-                    print("skipping item as not proper genre instance:", gq)
-                    continue
-                # avoid duplicates, catch errors
-                addtolist(final.genres, gq)
+
+        for gq in gcodes:
+            item = getitembyqcode(repo, gq)
+            if (isGenreItem(item) == False):
+                print("skipping item as not proper genre instance:", gq)
+                continue
+            # avoid duplicates, catch errors
+            addtolist(final.genres, gq)
 
     # if publisher was given manually
     if "muslabel" in commands:
         print("looking for publisher:", commands["muslabel"])
 
         pqcodes = searchItembySparql(repo, commands["muslabel"], True, 'fi')
-        if (pqcodes == None):
+        if (len(pqcodes) == 0):
             print("note, no qcode for publisher:", commands["muslabel"])
-        else:
-            for pq in pqcodes:
-                item = getitembyqcode(repo, pq)
-                # must be record label or record company
-                if (isRecordLabel(item) == False):
-                    print("skipping item as not proper record label instance:", pq)
-                    continue
-                # avoid duplicates, catch errors
-                addtolist(final.publishers, pq)
+            
+            # note: should try with different language as well?
+            # 'Q18127' tai  'Q2442401'
+            
+            pqcodes = searchItembySparql(repo, commands["muslabel"], True, 'en', 'Q18127')
+
+        for pq in pqcodes:
+            item = getitembyqcode(repo, pq)
+            # must be record label or record company
+            if (isRecordLabel(item) == False):
+                print("skipping item as not proper record label instance:", pq)
+                continue
+            # avoid duplicates, catch errors
+            addtolist(final.publishers, pq)
 
     # try to fetch qcodes by record (if given)
     if (finnarecord == None):
@@ -1345,7 +1361,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             gname = gname.strip()
         
         gcodes = searchItembySparql(repo, gname, True, 'fi')
-        if (gcodes == None):
+        if (len(gcodes) == 0):
             print("note, no qcode for genre name:", gname)
             continue
         for gq in gcodes:
@@ -1364,9 +1380,13 @@ def recordstoparams(repo, commands, finnarecord = None):
             pname = pname.strip()
         
         pqcodes = searchItembySparql(repo, pname, True, 'fi')
-        if (pqcodes == None):
+        if (len(pqcodes) == 0):
             print("note, no qcode for publisher:", pname)
-            continue
+
+            # try again
+            # 'Q18127' tai  'Q2442401'
+            pqcodes = searchItembySparql(repo, pname, True, 'en', 'Q18127')
+        
         for pq in pqcodes:
             item = getitembyqcode(repo, pq)
             # must be record label or record company
@@ -1389,9 +1409,11 @@ def recordstoparams(repo, commands, finnarecord = None):
         #if (plname == "maailmanlaajuinen"):
         #if (plname == "Eurooppa"):
         #if (plname == "Suomi"):
-        
-        pqcodes = searchItembySparql(repo, plname, True, 'fi')
-        if (pqcodes == None):
+
+        # skip for now, needs better way to determine usable places..
+        pqcodes = list()
+        #pqcodes = searchItembySparql(repo, plname, True, 'fi')
+        if (len(pqcodes) == 0):
             print("note, no qcode for place:", plname)
             continue
         
