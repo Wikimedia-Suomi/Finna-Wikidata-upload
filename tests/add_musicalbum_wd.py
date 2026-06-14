@@ -78,6 +78,7 @@ class FinnaRecord:
         self.origlangcode = None
         self.duration = None
         #self.releaseformat = None # CD, vinyylilevy, DVD..
+        self.location = list() # luontipaikka
         
     # simple checks if received record could be usable
     def isFinnaRecordOk(self):
@@ -349,6 +350,12 @@ class FinnaRecord:
                     
                 # <datafield tag="260" ind1=" " ind2=" "><subfield code="a">[Tampere] :</subfield><subfield code="b">Poko Records,</subfield><subfield code="c">℗ 1992.</subfield>
                 # -> publisher, copyright, release
+                
+                # <datafield tag="370" ind1=" " ind2=" "><subfield code="g">Suomi</subfield> 
+                if (dftag == "370" and dind1 == " " and dind2 == " " and sfcode == "g"): # -> luontipaikka
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.location, sftext)
+                 
                     
                 # <datafield tag="655" ind1=" " ind2="7"><subfield code="a">popmusiikki</subfield>
                 if (dftag == "655" and dind1 == " " and dind2 == 7 and sfcode == "a"): # -> genre
@@ -391,6 +398,7 @@ class FinalParams:
         self.genres = list() #dict() # name<-> qcode
         self.languages = list() #dict() # name<-> qcode
         #self.countries = list() #dict() # name<-> qcode
+        self.location = list()
         self.year = ""
         self.albumtitle = ""
         self.sourceurl = ""
@@ -1112,6 +1120,20 @@ def add_album_properties(repo, wditem, final):
             # add source if given
             #add_item_source_url(repo, placeclaim, final.sourceurl)
 
+        for locq in final.location:
+            
+            print("Adding claim: release location", locq)
+            
+            # todo: also validate that qcode is for a city or a country?
+            # TODO: we might need even better filtering before enabling this..
+
+            
+            locclaim = add_item_link(repo, wditem, 'P291', locq)
+
+            # add source if given
+            add_item_source_url(repo, locclaim, final.sourceurl)
+
+
 
 def add_album_identifiers(repo, wditem, commands):
 
@@ -1271,7 +1293,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.artists, artist_qcode)
 
-    if (artist_qcode == "" and finnarecord != None):
+    if (artist_qcode == "" and finnarecord != None and finnarecord.artistname != None):
         # try to find artist by sparql,
         # allow override by command as this may be ambigious to resolve automatically
         # so only search if qcode is not given
@@ -1359,6 +1381,8 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (endswith(gname, ";") == True):
             gname = removelastchar(gname)
             gname = gname.strip()
+
+        print("DEBUG: looking for genre name:", gname)
         
         gcodes = searchItembySparql(repo, gname, True, 'fi')
         if (len(gcodes) == 0):
@@ -1378,7 +1402,9 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (endswith(pname, ";") == True):
             pname = removelastchar(pname)
             pname = pname.strip()
-        
+
+        print("DEBUG: looking for publisher:", pname)
+
         pqcodes = searchItembySparql(repo, pname, True, 'fi')
         if (len(pqcodes) == 0):
             print("note, no qcode for publisher:", pname)
@@ -1432,6 +1458,37 @@ def recordstoparams(repo, commands, finnarecord = None):
                 continue
             # avoid duplicates, catch errors
             addtolist(final.places, pq)
+
+    for locname in finnarecord.location:
+        
+        # we could shortcut some
+        #if (plname == "maailmanlaajuinen"):
+        #if (plname == "Eurooppa"):
+        #if (plname == "Suomi"):
+
+        # skip for now, needs better way to determine usable places..
+        locqcodes = searchItembySparql(repo, locname, True, 'fi', 'Q3624078')
+        if (len(locqcodes) == 0):
+            print("note, no qcode for location:", locname)
+            continue
+        
+        for locq in locqcodes:
+            # must be city or country ?
+            #kaupunki (Q515)
+            #valtio (Q7275)
+            #itsenäinen valtio (Q3624078)
+            #maa (Q6256)
+
+            # itsenäinen valtio (Q3624078)
+            # yhtenäisvaltio (Q179164)
+            item = getitembyqcode(repo, locq)
+            if (isItemInstanceOf(item, 'Q515') == False 
+                and isItemInstanceOf(item, 'Q7275') == False 
+                and isItemInstanceOf(item, 'Q6256') == False):
+                print("skipping item as not proper place instance:", locq)
+                continue
+            # avoid duplicates, catch errors
+            addtolist(final.location, locq)
 
 
     return final
