@@ -69,7 +69,7 @@ class FinnaRecord:
         self.finnarecord = None # json data
         
         self.albumtitle = None
-        self.artistname = None
+        self.artistname = list()
         self.publishernames = list() # must find from xml
         self.publishingplaces = list()# must find from xml
         self.genres = list()# must find from xml
@@ -257,6 +257,12 @@ class FinnaRecord:
             if (len(asteri) > 0 and ff_role == "esittäjä"):
                 print("DEBUG: found presenter with asteri", asteri)
                 cleanupaddtolist(self.presenterasteri, asteri)
+             
+            # finna might have names as "lastname, firstname", "band (yhtye)"
+            # or "name (birthday-)" format so further parsing might be needed
+            # before used in wd lookups..
+            #if (len(ff_name) > 0 and ff_role == "esittäjä"):
+            #    cleanupaddtolist(self.artistname, ff_name)
         
         return True
 
@@ -1331,7 +1337,7 @@ def add_album_identifiers(repo, wditem, commands):
             add_item_value(repo, wditem, 'P436', mbgroup)
 
 
-def check_artist(repo, final, lang='fi'):
+def get_artist_label(repo, final, lang='fi'):
 
     for artistqcode in final.artists:
         item = getitembyqcode(repo, artistqcode)
@@ -1475,19 +1481,23 @@ def recordstoparams(repo, commands, finnarecord = None):
         # so only search if qcode is not given.
         #
         # use only as fallback now
-        if (len(finnarecord.presenterasteri) == 0):
-            acodes = searchItembySparql(repo, finnarecord.artistname, False, True, 'fi')
-            if (len(acodes) == 0):
-                print("note, no qcode for artist:", finnarecord.artistname)
+        if (len(finnarecord.presenterasteri) == 0 and len(finnarecord.artistname) > 0):
 
-            for aq in acodes:
-                item = getitembyqcode(repo, aq)
-                # must be a humand or a band
-                if (isArtistItem(item) == False):
-                    print("skipping item as not proper artist instance:", aq)
-                    continue
-                # avoid duplicates, catch errors
-                addtolist(final.artists, aq)
+            # note: finna names might be "lastname, firstname" or "band (yhtye)"
+            # so they might not be usable without further parsing..
+            for fan in finnarecord.artistname:
+                acodes = searchItembySparql(repo, fan, False, True, 'fi')
+                if (len(acodes) == 0):
+                    print("note, no qcode for artist:", fan)
+
+                for aq in acodes:
+                    item = getitembyqcode(repo, aq)
+                    # must be a humand or a band
+                    if (isArtistItem(item) == False):
+                        print("skipping item as not suitable artist instance:", aq)
+                        continue
+                    # avoid duplicates, catch errors
+                    addtolist(final.artists, aq)
 
 
     sourceurl = ""
@@ -1807,16 +1817,17 @@ def add_album(commands, finnarecord = None):
         print('WARN: cannot create or update, album name and qid missing')
         return None
 
-    # just check given parameter makes sense,
-    # if we are just updating an album this might not be necessary,
-    # but we should validate it if we are adding it to an album..
-    artistlabel = check_artist(repo, final)
-    if (artistlabel == None or artistlabel == ""):
-        print('WARN: cannot create, artist unknown')
-        return None
-
     album_item = {}
     if (len(albumqid) == 0):
+        
+        # just check given parameter makes sense,
+        # if we are just updating an album this might not be necessary,
+        # but we should validate it if we are adding it to an album..
+        artistlabel = get_artist_label(repo, final)
+        if (artistlabel == None or artistlabel == ""):
+            print('WARN: cannot create, artist unknown')
+            return None
+        
         # create new item by given name:
         # add description with artist and year
         #
