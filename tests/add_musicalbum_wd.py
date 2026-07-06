@@ -79,6 +79,7 @@ class FinnaRecord:
         self.duration = None
         #self.releaseformat = None # CD, vinyylilevy, DVD..
         self.location = list() # luontipaikka
+        self.presenterasteri = list() # esittäjän asteri-id
         self.producerasteri = list() # tuottajan asteri-id
         
     # simple checks if received record could be usable
@@ -211,7 +212,53 @@ class FinnaRecord:
             return True
         return False
 
-    #def parsepresenters(self):
+    def parsepresenters(self):
+        
+        records = self.finnarecord['records'][0]
+        if "presenters" not in records:
+            print("presenters does not exist in finna record", records)
+            return False
+
+        # this is weird, there is two levels of "presenters" in some cases?
+        f_presenters = records['presenters']
+        if "presenters" in f_presenters:
+            f_presenters = f_presenters['presenters']
+        
+        for pres in f_presenters:
+
+            print("DEBUG: pres", pres)
+
+            # might not have some fields in all cases
+            ff_name = ""
+            ff_date = ""
+            ff_role = ""
+            ff_id = ""
+            asteri = ""
+
+            if "name" in pres:
+                ff_name = pres['name'].strip()
+            if "date" in pres:
+                # if range -> split
+                # otherwise just plain number
+                ff_date = pres['date'].strip() # syntymävuosi? "1972-",
+            if "role" in pres:
+                # may have combinations ("sanoittaja, säveltäjä") or one ("esittäjä")
+                # -> should normalize into proper list
+                # -> find qid for roles
+                ff_role = pres["role"].strip()
+            if "id" in pres:
+                # plain number or asteri-prefix?
+                # -> normalize
+                ff_id = pres["id"].strip()
+                if (ff_id.find("(FI-ASTERI-N)") >= 0):
+                    asteri = ff_id.replace("(FI-ASTERI-N)", "")
+
+            # "esittäjä" for now, should parse combinations too
+            if (len(asteri) > 0 and ff_role == "esittäjä"):
+                print("DEBUG: found presenter with asteri", asteri)
+                cleanupaddtolist(self.presenterasteri, asteri)
+        
+        return True
 
     def parsenonpresenterauthors(self):
         # may have band name with "type": "Corporate Name"
@@ -492,6 +539,7 @@ def append_finna_api_parameters(url):
     url += finna_api_parameter('field[]', 'imagesExtended')
     url += finna_api_parameter('field[]', 'onlineUrls')
     url += finna_api_parameter('field[]', 'openUrl')
+    url += finna_api_parameter('field[]', 'presenters')
     url += finna_api_parameter('field[]', 'nonPresenterAuthors')
     url += finna_api_parameter('field[]', 'onlineUrls')
     url += finna_api_parameter('field[]', 'subjects')
@@ -1388,6 +1436,7 @@ def recordstoparams(repo, commands, finnarecord = None):
     if (releaseyear != "" and releaseyear != None):
         final.year = releaseyear
 
+
     # TODO: may have multiple artists in some cases
     # if finna record is given, try to find by name
     artist_qcode = ""
@@ -1402,22 +1451,43 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.artists, artist_qcode)
 
-    if (artist_qcode == "" and finnarecord != None and finnarecord.artistname != None):
+    if (artist_qcode == "" and finnarecord != None):
+
+        # if we have asteri-id from finnarecord,
+        # try to find qid by asteri id.
+        # note that the id may be still missing in wikidata so it should be fixed
+        for fas in finnarecord.presenterasteri:
+
+            # use kanto-property for asteri-id: should give only one match
+            faslist = searchbySparqlPropValue(repo, "P8980", fas)
+            for aq in faslist:
+                item = getitembyqcode(repo, aq)
+                # must be a humand or a band
+                if (isArtistItem(item) == False):
+                    print("skipping item as not proper artist instance:", aq)
+                    continue
+                # avoid duplicates, catch errors
+                addtolist(final.artists, aq)
+
+
         # try to find artist by sparql,
         # allow override by command as this may be ambigious to resolve automatically
-        # so only search if qcode is not given
-        acodes = searchItembySparql(repo, finnarecord.artistname, False, True, 'fi')
-        if (len(acodes) == 0):
-            print("note, no qcode for artist:", finnarecord.artistname)
+        # so only search if qcode is not given.
+        #
+        # use only as fallback now
+        if (len(finnarecord.presenterasteri) == 0):
+            acodes = searchItembySparql(repo, finnarecord.artistname, False, True, 'fi')
+            if (len(acodes) == 0):
+                print("note, no qcode for artist:", finnarecord.artistname)
 
-        for aq in acodes:
-            item = getitembyqcode(repo, aq)
-            # must be a humand or a band
-            if (isArtistItem(item) == False):
-                print("skipping item as not proper artist instance:", aq)
-                continue
-            # avoid duplicates, catch errors
-            addtolist(final.artists, aq)
+            for aq in acodes:
+                item = getitembyqcode(repo, aq)
+                # must be a humand or a band
+                if (isArtistItem(item) == False):
+                    print("skipping item as not proper artist instance:", aq)
+                    continue
+                # avoid duplicates, catch errors
+                addtolist(final.artists, aq)
 
 
     sourceurl = ""
@@ -1723,7 +1793,9 @@ def add_album(commands, finnarecord = None):
     wdsite.login()
 
     repo = wdsite.data_repository()
-    
+
+    # parse finna items to qcodes, lookups by asteri-id or name(s),
+    # use commandline parameters if given
     final = recordstoparams(repo, commands, finnarecord)
     
     # updating existing album?
@@ -1810,6 +1882,8 @@ def add_album_from_finna(commands):
     
     # try to parse these separately
     fr.parsenonpresenterauthors()
+    
+    fr.parsepresenters()
     
     # pass both record and extra commands:
     # some we can't parse yet..
