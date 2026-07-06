@@ -79,6 +79,7 @@ class FinnaRecord:
         self.duration = None
         #self.releaseformat = None # CD, vinyylilevy, DVD..
         self.location = list() # luontipaikka
+        self.producerasteri = list() # tuottajan asteri-id
         
     # simple checks if received record could be usable
     def isFinnaRecordOk(self):
@@ -210,10 +211,61 @@ class FinnaRecord:
             return True
         return False
 
-    #def getnonpresenterauthors(self):
+    #def parsepresenters(self):
+
+    def parsenonpresenterauthors(self):
         # may have band name with "type": "Corporate Name"
         # may have band member name with "type": "Personal Name"
-        # may have person id "id": "000103392", - kanto id?
+        # may have "role": sovittaja, tuottaja..
+        # may have person id "id": "000103392", - kanto id? or asteri: "(FI-ASTERI-N)000187459",
+        
+        records = self.finnarecord['records'][0]
+        
+        if "nonPresenterAuthors" not in records:
+            print("nonPresenterAuthors does not exist in finna record")
+            return False
+        
+        f_npauthors = records['nonPresenterAuthors']
+        for npa in f_npauthors:
+
+            print("DEBUG: npa", npa)
+            
+            # might not have some fields in all cases
+            ff_name = ""
+            ff_date = ""
+            ff_role = ""
+            ff_id = ""
+            ff_type = ""
+            asteri = ""
+
+            if "name" in npa:
+                ff_name = npa['name'].strip()
+            if "date" in npa:
+                # if range -> split
+                # otherwise just plain number
+                ff_date = npa['date'].strip() # syntymävuosi? "1972-",
+            if "role" in npa:
+                # may have combinations ("sanoittaja, säveltäjä") or one ("tuottaja")
+                # -> should normalize into proper list
+                # -> find qid for roles
+                ff_role = npa["role"].strip()
+            if "id" in npa:
+                # plain number or asteri-prefix?
+                # -> normalize
+                ff_id = npa["id"].strip()
+                if (ff_id.find("(FI-ASTERI-N)") >= 0):
+                    asteri = ff_id.replace("(FI-ASTERI-N)", "")
+            if "type" in npa:
+                # person or corporate -> make into enum
+                ff_type = npa["type"].strip() # "Personanl name"
+
+            # "tuottaja" or "tuottaja (ekspressio)" or "tuottaja, esittäjä"..
+            if (len(asteri) > 0 and ff_role == "tuottaja"):
+                print("DEBUG: found producer with asteri", asteri)
+                cleanupaddtolist(self.producerasteri, asteri)
+        
+        #print("DEBUG: ", )
+        return True
 
 
     # note: this might have nonsense like "zxx" in some cases
@@ -399,6 +451,9 @@ class FinalParams:
         self.languages = list() #dict() # name<-> qcode
         #self.countries = list() #dict() # name<-> qcode
         self.location = list()
+        #self.arrangers = list() # not album but track specific?
+        #self.composers = list() # not album but track specific?
+        self.producers = list() # this has been used per album
         self.year = ""
         self.albumtitle = ""
         self.sourceurl = ""
@@ -636,23 +691,24 @@ def searchItembySparql(repo, text, witharticle=False, withschema=True, lang='fi'
     #query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE {'
     query = 'SELECT distinct ?item ?itemLabel WHERE {'
     query += ' ?item ?label "'+ text +'"@' + lang + '.' # or alternative label(s)
+
+    # limit by instance whenever possible:
+    # sometimes there are too many or unpredictable qcodes to use this..
     if (instanceof != None):
         query += ' ?item wdt:P31 wd:' + instanceof + ' .'
 
     if (witharticle == True):
-        query += ' ?article schema:about ?item .' # not useful if there is no article in wikipedia? but needed to filter out some other odd things..
+        # without this query may timeout or result in error sometimes..
+        # but might need to remove this sometimes to get any results,
+        # also could be needed to filter out some other odd things..
+        query += ' ?article schema:about ?item .' 
     
-    # note: having this schema in query sometimes makes it impossible to find record labels for some reason
     if (withschema == True):
+        # note: having this schema in query sometimes makes it impossible to find record labels for some reason
         query += ' ?article schema:inLanguage "' + lang + '" .' # note part of below
     
     #query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.' # not useful if there is no article in wikipedia?
     query += ' SERVICE wikibase:label { bd:serviceParam wikibase:language "' + lang + '". } }'
-
-    # example:
-    # SELECT ?item WHERE { ?item wdt:P31 wd:Q42 } LIMIT 10
-    
-    # -> must be able to give list of qcodes for instance..
 
 
     print("DEBUG: using endpoint: ", endpoint)
@@ -725,6 +781,55 @@ def searchItembySparql(repo, text, witharticle=False, withschema=True, lang='fi'
 
     if (len(qcodes) == 0):
         print("did not find item for:", text)
+    return qcodes
+
+# search by value in property instead of text in label:
+# should be string or integer without language specific label(s)
+def searchbySparqlPropValue(repo, propnum, pval):
+
+    print("DEBUG: searching item with property ", propnum ," value: ", pval)
+
+    endpoint = 'https://query.wikidata.org/sparql'
+    entity_url = 'https://www.wikidata.org/entity/' # must be provided when endpoint is given
+    
+    query = 'SELECT ?item WHERE {'
+    query += ' ?item wdt:'+ propnum + ' "' + pval + '" }'
+    #query += ' }'
+
+    print("DEBUG: using endpoint: ", endpoint)
+
+    query_object = sparql.SparqlQuery(endpoint=endpoint, entity_url=entity_url)
+
+    print("DEBUG: executing SPARQL query: ", query)
+    
+    # Execute the SPARQL query and retrieve the data
+    data = query_object.select(query, full_data=True)
+    if data is None:
+        print("SPARQL failed. query error or login BUG?")
+        return None
+
+    # if there are too many other results, might be too ambigious -> cancel?
+    print("DEBUG: checking query results.. ")
+
+    qcodes = list()
+
+    for row in data:
+        print("DEBUG: row:", row)
+        page_id = str(row['item'])
+        
+        # error: page_id is a link, not just qcode..
+        # Http://www.wikidata.org/entity/Q484179
+        # -> strip it
+        itemqcode = parseqcodefromwikidatalink(page_id)
+        if (isQcode(itemqcode) == False):
+            print("not a valid qcode: ", itemqcode)
+            continue
+        
+        #print("using qid", itemqcode)
+        addtolist(qcodes, itemqcode)
+
+    if (len(qcodes) == 0):
+        print("did not find item for:", pval)
     return qcodes
     
 
@@ -809,28 +914,19 @@ def getgenreqcode(genre):
         return d_genretoqcode[genre]
     return ""
 
+def getprenseterroleqcode(prole):
 
-# todo: read config for mapping?
-# don't need many so might as well hard-code?
-# country of origin
-def getcountryqcode(commands):
+    d_roletoqcode = dict()
+    d_roletoqcode["sanoittaja"] = ""
+    d_roletoqcode["säveltäjä"] = ""
+    d_roletoqcode["sovittaja"] = ""
+    d_roletoqcode["tuottaja"] = ""
+    d_roletoqcode["esittäjä"] = ""
 
-    # mapping country to qcode
-    d_countryqcode = dict()
-    d_countryqcode["Yhdysvallat"] = "Q30"
-    d_countryqcode["Suomi"] = "Q33"
-    d_countryqcode["Italia"] = "Q38"
-    d_countryqcode["Espanja"] = "Q29"
-    d_countryqcode["Kreikka"] = "Q41"
-    d_countryqcode["Chile"] = "Q298"
-    
-    if "country" not in commands:
-        return ""
-
-    cq = commands["country"]
-    if cq in d_countryqcode:
-        return d_countryqcode[cq]
+    if prole in d_roletoqcode:
+        return d_roletoqcode[prole]
     return ""
+
 
 # todo: read config for mapping?
 # don't need many so might as well hard-code?
@@ -1017,6 +1113,16 @@ def add_album_properties(repo, wditem, final):
     # TODO: members of a band in specific album
 
     # tuottaja (P162)
+    if not 'P162' in wditem.claims:
+        
+        for prodcode in final.producers:
+
+            print("Adding claim: producer for ", prodcode)
+            prodclaim = add_item_link(repo, wditem, 'P162', prodcode)
+
+            # add source if given
+            add_item_source_url(repo, prodclaim, final.sourceurl)
+
 
     # kappalelista (P658) ja taideteoksen osien lukumäärä (P2635) (ääniraitojen määrä)
 
@@ -1378,6 +1484,26 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.languages, langqcode)
 
+    # find qid by asteri-id: needs federated sparql?
+    # or try with kanto-id property first?
+    for prodast in finnarecord.producerasteri:
+        # search from kanto-property by asteri-id
+        prodlist = searchbySparqlPropValue(repo, "P8980", prodast)
+        if (len(prodlist) == 0):
+            print("note, no qcode for asteri-id:", prodast)
+            continue
+        for prodq in prodlist:
+            item = getitembyqcode(repo, prodq)
+            if (item == None):
+                print("skipping item as not found:", prodq)
+                continue
+            if (isDisambiguation(item) == True):
+                continue
+
+            # avoid duplicates, catch errors
+            addtolist(final.producers, prodq)
+
+
     # may have multiple genres
     for gname in finnarecord.genres:
         
@@ -1678,8 +1804,12 @@ def add_album_from_finna(commands):
     
     # TODO: more validation..
     # before starting to write in to wikidata, do more checks here
-    
+
+    # most of the useful data is in the xml for albums
     fr.parseFullRecord()
+    
+    # try to parse these separately
+    fr.parsenonpresenterauthors()
     
     # pass both record and extra commands:
     # some we can't parse yet..
