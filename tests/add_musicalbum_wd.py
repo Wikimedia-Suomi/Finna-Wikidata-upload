@@ -1083,6 +1083,10 @@ def isRecordLabel(item):
         if (qid == 'Q2442401'):
             return True
         
+        # musiikkituotantoyhtiö (Q58318936)
+        if (qid == 'Q58318936'):
+            return True
+        
     return False
 
 
