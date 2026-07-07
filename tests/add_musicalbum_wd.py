@@ -79,8 +79,15 @@ class FinnaRecord:
         self.duration = None
         #self.releaseformat = None # CD, vinyylilevy, DVD..
         self.location = list() # luontipaikka
+        
+        # these are pretty self-explanatory..
         self.presenterasteri = list() # esittäjän asteri-id
         self.producerasteri = list() # tuottajan asteri-id
+
+        # these are not used per-album but by per-track in wikidata?
+        self.arrangerasteri = list() # sovittaja
+        self.composerasteri = list() # säveltäjä
+        
         
     # simple checks if received record could be usable
     def isFinnaRecordOk(self):
@@ -179,7 +186,7 @@ class FinnaRecord:
         
         if "formats" not in records:
             return False
-        
+
         f_formats = records['formats']
         for fmt in f_formats:
             ff_value = fmt['value'].strip()
@@ -211,6 +218,27 @@ class FinnaRecord:
         if (f_pd == "1 CD-äänilevy"):
             return True
         return False
+
+    # note: only use the result for explicit marking,
+    # tag might be missing or different formats etc.
+    def issingle(self):
+        records = self.finnarecord['records'][0]
+
+        # parse subjects for "singlet."
+        # might have different tags as well, see what comes up..
+
+        if "subjects" not in records:
+            return False
+        
+        f_sub = records['subjects']
+        for sub in f_sub:
+            for s in sub:
+                ff_value = s.strip()
+                if (ff_value == "singlet."):
+                    return True
+
+        return False
+        
 
     def parsepresenters(self):
         
@@ -308,14 +336,27 @@ class FinnaRecord:
                 ff_id = npa["id"].strip()
                 if (ff_id.find("(FI-ASTERI-N)") >= 0):
                     asteri = ff_id.replace("(FI-ASTERI-N)", "")
+                #else: # plain number -> assume asteri-id ?
             if "type" in npa:
                 # person or corporate -> make into enum
                 ff_type = npa["type"].strip() # "Personanl name"
 
             # "tuottaja" or "tuottaja (ekspressio)" or "tuottaja, esittäjä"..
+            # let's only use explicit for per-album cases for now
             if (len(asteri) > 0 and ff_role == "tuottaja"):
                 print("DEBUG: found producer with asteri", asteri)
                 cleanupaddtolist(self.producerasteri, asteri)
+
+            # wikidata only has this per-track instead of per-album?
+            if (len(asteri) > 0 and ff_role == "säveltäjä"):
+                print("DEBUG: found composer with asteri", asteri)
+                cleanupaddtolist(self.composerasteri, asteri)
+
+            # wikidata only has this per-track instead of per-album?
+            if (len(asteri) > 0 and ff_role == "sovittaja"):
+                print("DEBUG: found arranger with asteri", asteri)
+                cleanupaddtolist(self.arrangerasteri, asteri)
+
         
         #print("DEBUG: ", )
         return True
@@ -514,7 +555,8 @@ class FinalParams:
         self.duration = ""
         #self.releaseformat = list() # CD/LP/DVD..
 
-
+        self.issingle = False
+        self.instancetype = ''
 
 # / class FinalParams
 
@@ -1148,9 +1190,10 @@ def add_album_properties(repo, wditem, final):
     
     # instance of
     if not 'P31' in wditem.claims:
-        print("Adding claim: instance of album")
+        
+        print("Adding claim: instance of, ", final.instancetype)
         claim = pywikibot.Claim(repo, 'P31')
-        target = pywikibot.ItemPage(repo, 'Q482994') # music album
+        target = pywikibot.ItemPage(repo, final.instancetype)
         claim.setTarget(target)
         wditem.addClaim(claim)#, summary='Adding 1 claim')
 
@@ -1556,7 +1599,18 @@ def recordstoparams(repo, commands, finnarecord = None):
     # try to fetch qcodes by record (if given)
     if (finnarecord == None):
         return final
+
+    # might be EP or something else too or tag may be missing:
+    # only mark as single if high confidence (explicit tag found)
+    if (finnarecord.issingle() == True):
+        final.issingle = True
+        final.instancetype = 'Q134556' # single
+        print("album is single", final.instancetype)
+    else:
+        final.instancetype = 'Q482994' # music album
+        print("album is album", final.instancetype)
     
+    # use duration when explicitly given
     if (finnarecord.duration != None):
         final.duration = finnarecord.duration
 
@@ -1725,10 +1779,16 @@ def create_album_item(repo, final, artistlabel):
     # then use descrption "studio album by..",
     # also check cases for live albums etc. 
 
-    album_desc_en = "album by " + artistlabel
+    albumtype = ""
+    if (final.issingle == True):
+        albumtype = "single"
+    else:
+        albumtype = "album"
+
+    album_desc_en = albumtype + " by " + artistlabel
     #album_desc_fi = artistlabel + " albumi"
-    album_desc_sv = "album av " + artistlabel
-    album_desc_fr = "album de " + artistlabel
+    album_desc_sv = albumtype + " av " + artistlabel
+    album_desc_fr = albumtype + " de " + artistlabel
 
     # more accurate date? parse to year
     if (len(final.year) > 0):
