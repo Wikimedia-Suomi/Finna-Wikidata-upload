@@ -1452,6 +1452,9 @@ def check_if_album_exists_by_name(repo, albumtitle):
 def recordstoparams(repo, commands, finnarecord = None):
     final = FinalParams()
 
+    # assume by default
+    final.instancetype = 'Q482994' # music album
+
     album_name = ""
     if (finnarecord != None):
         album_name = finnarecord.getTitleFromFinna()
