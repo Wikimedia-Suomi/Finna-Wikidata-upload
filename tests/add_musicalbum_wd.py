@@ -1043,6 +1043,8 @@ def getlanguageqcode(lang):
     d_langqcode["spa"] = "Q1321" # langcode
     d_langqcode["italia"] = "Q652"
     d_langqcode["ita"] = "Q652" # langcode
+    d_langqcode["portugali"] = "Q5146"
+    d_langqcode["por"] = "Q5146" # langcode
 
     
     # useita kieliä
