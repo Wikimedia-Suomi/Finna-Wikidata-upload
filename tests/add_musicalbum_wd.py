@@ -80,6 +80,8 @@ class FinnaRecord:
         #self.releaseformat = None # CD, vinyylilevy, DVD..
         self.location = list() # luontipaikka
         
+        self.iscompilation = False
+        
         # these are pretty self-explanatory..
         self.presenterasteri = list() # esittäjän asteri-id
         self.producerasteri = list() # tuottajan asteri-id
@@ -504,9 +506,14 @@ class FinnaRecord:
                  
                 # <datafield tag="655" ind1=" " ind2="7"><subfield code="8">2\\u</subfield><subfield code="a">doom metal</subfield>
                 # <datafield tag="655" ind1=" " ind2="7"><subfield code="a">popmusiikki</subfield>
+                # <datafield tag="655" ind1=" " ind2="7"><subfield code="a">kokoomateokset
                 if (dftag == "655" and dind1 == " " and dind2 == 7 and sfcode == "a"): # -> genre
+                    if (sftext == "kokoomateokset"):
+                        self.iscompilation = True
+                    
                     # cleanup, don't add duplicates
                     cleanupaddtolist(self.genres, sftext)
+                    
 
                 # if dftag == 264, ind1 == " ", ind2 == 1 and sfcode == c -> year 
 
@@ -1037,6 +1044,8 @@ def getlanguageqcode(lang):
     d_langqcode["fin"] = "Q1412" # langcode
     d_langqcode["ruotsi"] = "Q9027"
     d_langqcode["swe"] = "Q9027" # langcode
+    d_langqcode["norja"] = "Q9043"
+    d_langqcode["nor"] = "Q9043" # langcode
     d_langqcode["ranska"] = "Q150"
     d_langqcode["fra"] = "Q150" # langcode
     d_langqcode["espanja"] = "Q1321"
@@ -1076,6 +1085,9 @@ def isArtistItem(item):
             return True
         #muusikkoduo (Q9212979)
         if (qid == 'Q9212979'):
+            return True
+        # kansanmusiikkiyhtye (Q113292621)
+        if (qid == 'Q113292621'):
             return True
         
     return False
@@ -1142,21 +1154,19 @@ def getArtistsFromItem(item):
         addtolist(qlist, claim.getTarget().id)
     return qlist
 
-def add_item_link(repo, wditem, prop, qcode):
+def add_item_link(repo, prop, qcode):
     claim = pywikibot.Claim(repo, prop)
     target = pywikibot.ItemPage(repo, qcode) 
     claim.setTarget(target)
-    wditem.addClaim(claim)#, summary='Adding 1 claim')
     return claim
 
-def add_item_value(repo, wditem, prop, value):
+def add_item_value(repo, prop, value):
     claim = pywikibot.Claim(repo, prop)
     claim.setTarget(value)
-    wditem.addClaim(claim)#, summary='Adding 1 claim')
     return claim
 
 # todo: other possible parameters
-def add_item_source_url(repo, p_claim, sourceurl):
+def add_item_source_url(repo, sourceurl):
     
     if (sourceurl == ""):
         return None
@@ -1165,22 +1175,10 @@ def add_item_source_url(repo, p_claim, sourceurl):
    
     u_claim = pywikibot.Claim(repo, prop, is_reference=True, is_qualifier=False)
     u_claim.setTarget(sourceurl)
-    p_claim.addSource(u_claim)
+    return u_claim
 
     # todo: other sources to use? -> must have other related properties and qualifiers..
 
-
-# todo: test this:
-# parameters should be qid of actual unit
-#def add_item_unit_qualifier(repo, p_claim, unit):
-    
-#    if (unit == ""):
-#        return None
-
-#    prop = 'Q1790144' # unit property for unit qualifier
-#    u_claim = pywikibot.Claim(repo, prop, is_reference=False, is_qualifier=True)
-#    u_claim.setTarget(unit)
-#    p_claim.addSource(u_claim)
 
 
 # todo: use data from record instead from commandline
@@ -1208,10 +1206,14 @@ def add_album_properties(repo, wditem, final):
         for artist_qcode in final.artists:
             
             print("Adding claim: artist", artist_qcode)
-            artistclaim = add_item_link(repo, wditem, 'P175', artist_qcode)
+            artistclaim = add_item_link(repo, 'P175', artist_qcode)
 
             # add source if given
-            add_item_source_url(repo, artistclaim, final.sourceurl)
+            srcclaim = add_item_source_url(repo, final.sourceurl)
+            artistclaim.addSource(srcclaim)
+
+            wditem.addClaim(artistclaim)#, summary='Adding 1 claim')
+            
 
     # TODO: members of a band in specific album
 
@@ -1221,10 +1223,13 @@ def add_album_properties(repo, wditem, final):
         for prodcode in final.producers:
 
             print("Adding claim: producer for ", prodcode)
-            prodclaim = add_item_link(repo, wditem, 'P162', prodcode)
+            prodclaim = add_item_link(repo, 'P162', prodcode)
 
             # add source if given
-            add_item_source_url(repo, prodclaim, final.sourceurl)
+            srcclaim = add_item_source_url(repo, final.sourceurl)
+            prodclaim.addSource(srcclaim)
+
+            wditem.addClaim(prodclaim)#, summary='Adding 1 claim')
 
 
     # kappalelista (P658) ja taideteoksen osien lukumäärä (P2635) (ääniraitojen määrä)
@@ -1243,9 +1248,11 @@ def add_album_properties(repo, wditem, final):
             claim = pywikibot.Claim(repo, 'P2047')
             
             claim.setTarget(wbquant)
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
             
-            add_item_source_url(repo, claim, final.sourceurl)
+            srcclaim = add_item_source_url(repo, final.sourceurl)
+            claim.addSource(srcclaim)
+
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
  
     # release date julkaisupäivä (P577) (date formatting?)
     if not 'P577' in wditem.claims:
@@ -1258,9 +1265,11 @@ def add_album_properties(repo, wditem, final):
             claim = pywikibot.Claim(repo, 'P577')
             #target = pywikibot.ItemPage(repo, released) 
             claim.setTarget(wbdate)
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
             
-            add_item_source_url(repo, claim, final.sourceurl)
+            srcclaim = add_item_source_url(repo, final.sourceurl)
+            claim.addSource(srcclaim)
+
+            wditem.addClaim(claim)#, summary='Adding 1 claim')
             
 
     # genre
@@ -1269,10 +1278,13 @@ def add_album_properties(repo, wditem, final):
         for gcode in final.genres:
 
             print("Adding claim: genre for ", gcode)
-            genreclaim = add_item_link(repo, wditem, 'P136', gcode)
+            genreclaim = add_item_link(repo, 'P136', gcode)
 
             # add source if given
-            add_item_source_url(repo, genreclaim, final.sourceurl)
+            srcclaim = add_item_source_url(repo, final.sourceurl)
+            genreclaim.addSource(srcclaim)
+
+            wditem.addClaim(genreclaim)#, summary='Adding 1 claim')
 
 
     # kieli, language(s) of the album - may be multiple
@@ -1284,10 +1296,13 @@ def add_album_properties(repo, wditem, final):
             # TODO: need a query by specific property with ISO-code instead of label
             
             print("Adding claim: language for ", langqcode)
-            langclaim = add_item_link(repo, wditem, 'P407', langqcode)
+            langclaim = add_item_link(repo, 'P407', langqcode)
 
             # add source if given
-            add_item_source_url(repo, langclaim, final.sourceurl)
+            srcclaim = add_item_source_url(repo, final.sourceurl)
+            langclaim.addSource(srcclaim)
+
+            wditem.addClaim(langclaim)#, summary='Adding 1 claim')
 
     # teoksen tyyppi (P7937)
     if not 'P7937' in wditem.claims:
@@ -1307,10 +1322,13 @@ def add_album_properties(repo, wditem, final):
         for lq in final.publishers:
             
             print("Adding claim: record label", lq)
-            labelclaim = add_item_link(repo, wditem, 'P264', lq)
+            labelclaim = add_item_link(repo, 'P264', lq)
 
             # add source if given
-            add_item_source_url(repo, labelclaim, final.sourceurl)
+            srcclaim = add_item_source_url(repo, final.sourceurl)
+            labelclaim.addSource(srcclaim)
+
+            wditem.addClaim(labelclaim)#, summary='Adding 1 claim')
 
 
     # julkaisupaikka (P291)
@@ -1327,10 +1345,13 @@ def add_album_properties(repo, wditem, final):
             # todo: also validate that qcode is for a city or a country?
             # TODO: we might need even better filtering before enabling this..
 
-            #placeclaim = add_item_link(repo, wditem, 'P291', pq)
+            #placeclaim = add_item_link(repo, 'P291', pq)
 
             # add source if given
-            #add_item_source_url(repo, placeclaim, final.sourceurl)
+            #srcclaim = add_item_source_url(repo, final.sourceurl)
+            #placeclaim.addSource(srcclaim)
+
+            #wditem.addClaim(placeclaim)#, summary='Adding 1 claim')
 
         for locq in final.location:
             
@@ -1340,14 +1361,21 @@ def add_album_properties(repo, wditem, final):
             # TODO: we might need even better filtering before enabling this..
 
             
-            locclaim = add_item_link(repo, wditem, 'P291', locq)
+            locclaim = add_item_link(repo, 'P291', locq)
 
             # add source if given
-            add_item_source_url(repo, locclaim, final.sourceurl)
+            srcclaim = add_item_source_url(repo, final.sourceurl)
+            locclaim.addSource(srcclaim)
+
+            wditem.addClaim(locclaim)#, summary='Adding 1 claim')
 
 
 
 def add_album_identifiers(repo, wditem, commands):
+    
+    # can we add all at once this way?
+    # no, not supported..
+    #vclaimlist = []
 
     # discogs master
     if not 'P1954' in wditem.claims:
@@ -1355,14 +1383,18 @@ def add_album_identifiers(repo, wditem, commands):
             discogs = commands["discogsmaster"]
             
             print("Adding claim: discogs master")
-            add_item_value(repo, wditem, 'P1954', discogs)
+            vclaim = add_item_value(repo, 'P1954', discogs)
+            wditem.addClaim(vclaim)#, summary='Adding 1 claim')
+            #vclaimlist.append(vclaim)
 
     if not 'P2206' in wditem.claims:
         if "discogsrelease" in commands:
             discogs = commands["discogsrelease"]
             
             print("Adding claim: discogs release")
-            add_item_value(repo, wditem, 'P2206', discogs)
+            vclaim = add_item_value(repo, 'P2206', discogs)
+            wditem.addClaim(vclaim)#, summary='Adding 1 claim')
+            #vclaimlist.append(vclaim)
 
     # metal archives release
     if not 'P2721' in wditem.claims:
@@ -1370,7 +1402,9 @@ def add_album_identifiers(repo, wditem, commands):
             metalarc = commands["metalarchives"]
             
             print("Adding claim: metal archives release")
-            add_item_value(repo, wditem, 'P2721', metalarc)
+            vclaim = add_item_value(repo, 'P2721', metalarc)
+            wditem.addClaim(vclaim)#, summary='Adding 1 claim')
+            #vclaimlist.append(vclaim)
 
 
     # julkaisun MusicBrainz-tunniste (P5813)
@@ -1383,8 +1417,11 @@ def add_album_identifiers(repo, wditem, commands):
             mbgroup = commands["mbzgroup"]
             
             print("Adding claim: musicbrainz release group")
-            add_item_value(repo, wditem, 'P436', mbgroup)
+            vclaim = add_item_value(repo, 'P436', mbgroup)
+            wditem.addClaim(vclaim)#, summary='Adding 1 claim')
+            #vclaimlist.append(vclaim)
 
+    #wditem.addClaim(vclaimlist)#, summary='Adding claims')
 
 def get_artist_label(repo, final, lang='fi'):
 
@@ -1427,11 +1464,13 @@ def check_if_album_exists_by_qid(repo, albumqid):
     return False
 
 
-def check_if_album_exists_by_name(repo, albumtitle):
+def check_if_album_exists_by_name(repo, albumtitle, artistqcode):
 
     albums = searchItembySparql(repo, albumtitle, True, True)
     if (len(albums) == 0):
         return False
+
+    artistfound = False
 
     for al in albums:
         albumitem = getitembyqcode(repo, albumqid)
@@ -1439,9 +1478,10 @@ def check_if_album_exists_by_name(repo, albumtitle):
             continue
 
         qlist = getArtistsFromItem(albumitem)
+        if artistqcode in qlist:
+            artistfound = True
         # check if same artist and same year as well:
-        # arists may have album with same name in different years
-        
+        # artists may have album with same name in different years
     
     
     
@@ -1582,7 +1622,7 @@ def recordstoparams(repo, commands, finnarecord = None):
     if "muslabel" in commands:
         print("looking for publisher:", commands["muslabel"])
 
-        pqcodes = searchItembySparql(repo, commands["muslabel"], True, True, 'fi')
+        pqcodes = searchItembySparql(repo, commands["muslabel"], True, False, 'fi')
         if (len(pqcodes) == 0):
             print("note, no qcode for publisher:", commands["muslabel"])
             
@@ -1611,6 +1651,9 @@ def recordstoparams(repo, commands, finnarecord = None):
         final.issingle = True
         final.instancetype = 'Q134556' # single
         print("album is single", final.instancetype)
+    elif (finnarecord.iscompilation == True):
+        final.instancetype = 'Q482994' # music album
+        print("album is compilation", final.instancetype)
     else:
         final.instancetype = 'Q482994' # music album
         print("album is album", final.instancetype)
@@ -1678,7 +1721,7 @@ def recordstoparams(repo, commands, finnarecord = None):
 
         print("DEBUG: looking for publisher:", pname)
 
-        pqcodes = searchItembySparql(repo, pname, True, True, 'fi')
+        pqcodes = searchItembySparql(repo, pname, True, False, 'fi')
         if (len(pqcodes) == 0):
             print("note, no qcode for publisher:", pname)
 
@@ -1740,8 +1783,8 @@ def recordstoparams(repo, commands, finnarecord = None):
         #if (plname == "Eurooppa"):
         #if (plname == "Suomi"):
 
-        # skip for now, needs better way to determine usable places..
-        locqcodes = searchItembySparql(repo, locname, True, True, 'fi', 'Q3624078')
+        # should be country name
+        locqcodes = searchItembySparql(repo, locname, True, False, 'fi', 'Q3624078')
         if (len(locqcodes) == 0):
             print("note, no qcode for location:", locname)
             continue
