@@ -1247,9 +1247,13 @@ def isRecordLabel(item):
         # levymerkki (Q18127)
         if (qid == 'Q18127'):
             return True
-        
+
         # levy-yhtiö (Q2442401)
         if (qid == 'Q2442401'):
+            return True
+        
+        # itsenäinen levymerkki (Q1542343)
+        if (qid == 'Q1542343'):
             return True
         
         # musiikkituotantoyhtiö (Q58318936)
