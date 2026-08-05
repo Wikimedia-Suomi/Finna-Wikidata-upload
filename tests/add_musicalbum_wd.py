@@ -36,6 +36,29 @@ def removelastchar(text):
         return text[:len(text)-1]
     return text
 
+def endswithcommaordot(text):
+    if (len(text) < 1):
+        return False
+    ch = text[len(text)-1]
+    if (ch == ","):
+        return True
+    if (ch == "."):
+        return True
+    return False
+
+def isinbrackets(text):
+    if (text[0] == '[' and text[len(text)-1] == ']'):
+        return True
+    return False
+
+# cleanup if string starts and ends with brackets,
+# location name might be in brackets
+def removefirstlastbracket(text):
+    if (text[0] == '[' and text[len(text)-1] == ']'):
+        return text[1:len(text)-1]
+    
+    # otherwise do nothing
+    return text
 
 def addtolist(dest, s):
     if (s == None):
@@ -77,8 +100,9 @@ class FinnaRecord:
         self.languagecode = None
         self.origlangcode = None
         self.duration = None
-        #self.releaseformat = None # CD, vinyylilevy, DVD..
         self.location = list() # luontipaikka
+        self.recordedat = list() # äänitysstudio?
+        self.recordingplace = list() # äänityspaikka
         
         self.iscompilation = False
         
@@ -89,6 +113,11 @@ class FinnaRecord:
         # these are not used per-album but by per-track in wikidata?
         self.arrangerasteri = list() # sovittaja
         self.composerasteri = list() # säveltäjä
+        
+        # distribution formats, CD, LP..
+        # we can only get this per each item,
+        # for other formats we would need different finna items
+        #self.releaseformat = list()
         
         
     # simple checks if received record could be usable
@@ -481,6 +510,33 @@ class FinnaRecord:
 
                 # if dftag == 245, ind1 == 1, ind2 == 0 and sfcode == a -> album name 
                 # if dftag == 245, ind1 == 1, ind2 == 0 and sfcode == c -> artist name 
+
+                # <datafield tag="260" ind1=" " ind2=" "><subfield code="a">[Tampere] :</subfield><subfield code="b">Poko Records,</subfield><subfield code="c">℗ 1992.</subfield>
+                # -> publisher, copyright, release
+                # <datafield tag="260" ind1=" " ind2=" "><subfield code="a">[Helsinki] :</subfield><subfield code="b">Texicalli Records,</subfield><subfield code="c">[℗ 2003]</subfield></datafield>
+
+                if (dftag == "260" and dind1 == " " and dind2 == " " and sfcode == "a"): # -> publisher location
+                    # parse: if there is city/country in bracket remove brackets?
+                    tmptext = sftext
+                    if (endswith(tmptext, ":") == True):
+                        tmptext = removelastchar(tmptext)
+                        tmptext = tmptext.strip()
+                        
+                    if (isinbrackets(tmptext) == True):
+                        tmptext = removefirstlastbracket(tmptext)
+                    
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.publishingplaces, tmptext)
+
+                if (dftag == "260" and dind1 == " " and dind2 == " " and sfcode == "b"): # -> publisher name 
+
+                    tmptext = sftext
+                    if (endswith(tmptext, ",") == True):
+                        tmptext = removelastchar(tmptext)
+                        tmptext = tmptext.strip()
+                    
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.publishernames, tmptext)
                 
                 if (dftag == "264" and dind1 == " " and dind2 == "1" and sfcode == "a"): # -> publishing place name 
                     
@@ -496,13 +552,33 @@ class FinnaRecord:
                     # cleanup, don't add duplicates
                     cleanupaddtolist(self.publishernames, sftext)
                     
-                # <datafield tag="260" ind1=" " ind2=" "><subfield code="a">[Tampere] :</subfield><subfield code="b">Poko Records,</subfield><subfield code="c">℗ 1992.</subfield>
-                # -> publisher, copyright, release
-                
                 # <datafield tag="370" ind1=" " ind2=" "><subfield code="g">Suomi</subfield> 
                 if (dftag == "370" and dind1 == " " and dind2 == " " and sfcode == "g"): # -> luontipaikka
                     # cleanup, don't add duplicates
                     cleanupaddtolist(self.location, sftext)
+                    
+                # <datafield tag="518" ind1=" " ind2=" "><subfield code="o">Äänitys:</subfield><subfield code="p">[Helsinki], Finnvox Studiot.</subfield><
+                if (dftag == "518" and dind1 == " " and dind2 == " " and sfcode == "p"): # -> äänityspaikka
+                    # parse: if there is city/country in bracket remove that?
+                    # we would want the studio name only?
+
+                    tmptext = sftext
+                    icomma = tmptext.find(",")
+                    if (icomma > 1):
+                        recplace = tmptext[:icomma]
+                        if (isinbrackets(recplace) == True):
+                            recplace = removefirstlastbracket(recplace)
+                        # cleanup, don't add duplicates
+                        cleanupaddtolist(self.recordingplace, recplace)
+                        tmptext = tmptext[icomma+1:]
+                    
+                    if (endswithcommaordot(tmptext) == True):
+                        tmptext = removelastchar(tmptext)
+                        tmptext = tmptext.strip()
+
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.recordedat, tmptext)
+
                  
                 # <datafield tag="655" ind1=" " ind2="7"><subfield code="8">2\\u</subfield><subfield code="a">doom metal</subfield>
                 # <datafield tag="655" ind1=" " ind2="7"><subfield code="a">popmusiikki</subfield>
@@ -558,8 +634,14 @@ class FinalParams:
         self.year = ""
         self.albumtitle = ""
         self.sourceurl = ""
-        self.releasetype = "" # studio/live..
+        self.releasetype = "" # studio/live.. compilation?
         self.duration = ""
+
+        # recording studio
+        self.recordedat = list() #dict() # name<-> qcode
+        
+        # list of release formats is not readily available
+        # as library information is per item
         #self.releaseformat = list() # CD/LP/DVD..
 
         self.issingle = False
@@ -710,6 +792,20 @@ def isQcode(qcode):
 def escapesinglequote(s):
     return s.replace("'", "''")
 
+
+# list qcodes only where it is linking
+def getQcodesFromProperty(item, prop):
+    qlist = list()
+    
+    propclaims = item.claims.get(prop, [])
+    #propclaims = item.claims[prop]
+    for claim in propclaims:
+        qid = claim.getTarget().id
+        if (qid not in qlist):
+            qlist.append(qid)
+    return qlist
+
+
 def isDisambiguation(item):
 
     instance_of = item.claims.get('P31', [])
@@ -752,6 +848,16 @@ def getlabelbyanylangfromitem(item, langs):
             return label
     return None
 
+def getaliasesbylangfromitem(item, lang):
+
+    # note: this can have multiple values, not just one like normal label
+    for li in item.aliases:
+        alabels = item.aliases[li]
+        if (li == lang):
+            #print("DEBUG: found label alias for ", item.getID() ," in lang ", lang ,": ", label)
+            return alabels
+    return None
+
 def isItemInstanceOf(item, qcode):
 
     if (qcode == None or qcode == ""):
@@ -774,7 +880,7 @@ def isItemInstanceOf(item, qcode):
 # note that while finna might give items in finnish, also swedish and english are possible..
 # and if other sources are queried those might be in english.
 # some items in wikidata might not have finnish label, but might have in "mul" or english, or vice versa..
-def searchItembySparql(repo, text, witharticle=False, withschema=True, lang='fi', instanceof=None):
+def searchItembySparql(repo, text, witharticle=False, withschema=True, searchaltlabel=False, lang='fi', instanceof=None):
 
     print("DEBUG: searching item with label: ", text)
 
@@ -792,8 +898,13 @@ def searchItembySparql(repo, text, witharticle=False, withschema=True, lang='fi'
     #query += ' } limit 10'
 
     #query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE {'
-    query = 'SELECT distinct ?item ?itemLabel WHERE {'
-    query += ' ?item ?label "'+ text +'"@' + lang + '.' # or alternative label(s)
+    query = ''
+    if (searchaltlabel == False):
+        query = 'SELECT distinct ?item ?itemLabel WHERE {'
+        query += ' ?item ?label "'+ text +'"@' + lang + '.' 
+    else:
+        query = 'SELECT distinct ?item ?itemLabel ?itemAltLabel WHERE {'
+        query += ' ?item ?altLabel "'+ text +'"@' + lang + '.' 
 
     # limit by instance whenever possible:
     # sometimes there are too many or unpredictable qcodes to use this..
@@ -868,7 +979,7 @@ def searchItembySparql(repo, text, witharticle=False, withschema=True, lang='fi'
         # TODO: compare with alternate label(s) if there are multiple
         # might have difference in upper/lower case in some cases? (Of, And..)
         #if (lbl != text and lbl.lower() != text.lower()):
-        if (lbl != text):
+        if (lbl != text and searchaltlabel == False):
             # not correct label for some reason
             print("label does not match search: ", lbl)
             continue
@@ -880,6 +991,7 @@ def searchItembySparql(repo, text, witharticle=False, withschema=True, lang='fi'
         # another issue is that data can be simply broken for some reason, so avoid using those.
 
         #print("using qid", itemqcode)
+        # avoid duplicates
         addtolist(qcodes, itemqcode)
 
     if (len(qcodes) == 0):
@@ -1110,6 +1222,7 @@ def isAlbumItem(item):
         
     return False
 
+# if entity is for a music genre
 def isGenreItem(item):
     
     # TODO: may be subclass of ?
@@ -1145,6 +1258,17 @@ def isRecordLabel(item):
         
     return False
 
+def isStudioItem(item):
+    instance_of = item.claims.get('P31', [])
+    for claim in instance_of:
+
+        qid = claim.getTarget().id
+        
+        # äänitysstudio (Q746369)
+        if (qid == 'Q746369'):
+            return True
+        
+    return False
 
 def getArtistsFromItem(item):
     qlist = list()
@@ -1165,7 +1289,8 @@ def add_item_value(repo, prop, value):
     claim.setTarget(value)
     return claim
 
-# todo: other possible parameters
+# todo: other possible parameters,
+# also set date of access ?
 def add_item_source_url(repo, sourceurl):
     
     if (sourceurl == ""):
@@ -1178,6 +1303,7 @@ def add_item_source_url(repo, sourceurl):
     return u_claim
 
     # todo: other sources to use? -> must have other related properties and qualifiers..
+
 
 
 
@@ -1209,65 +1335,99 @@ def add_album_properties(repo, wditem, final):
             artistclaim = add_item_link(repo, 'P175', artist_qcode)
 
             # add source if given
-            srcclaim = add_item_source_url(repo, final.sourceurl)
-            artistclaim.addSource(srcclaim)
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                artistclaim.addSource(srcclaim)
 
             wditem.addClaim(artistclaim)#, summary='Adding 1 claim')
             
 
     # TODO: members of a band in specific album
+    # just presenters? role for instrument?
+
+    existingproducerqcodes = getQcodesFromProperty(wditem, 'P162')
+    print("DEBUG: existing procuders:", existingproducerqcodes)
 
     # tuottaja (P162)
     if not 'P162' in wditem.claims:
         
         for prodcode in final.producers:
 
+            #if prodcode in existingproducerqcodes:
+            #    print("Producer exists for ", prodcode)
+            #    continue
+
             print("Adding claim: producer for ", prodcode)
             prodclaim = add_item_link(repo, 'P162', prodcode)
 
             # add source if given
-            srcclaim = add_item_source_url(repo, final.sourceurl)
-            prodclaim.addSource(srcclaim)
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                prodclaim.addSource(srcclaim)
 
             wditem.addClaim(prodclaim)#, summary='Adding 1 claim')
 
 
     # kappalelista (P658) ja taideteoksen osien lukumäärä (P2635) (ääniraitojen määrä)
+    # -> need to create items for each track..
 
     # jakelumuoto (P437), LP, CD, digitaalinen jakelu..
+    # CD might be simple to get, other formats maybe not
 
     # äänityspaikka (P483)
+    # -> not always parseable in finna data (if given)
+    if not 'P483' in wditem.claims:
+        
+        for rcode in final.recordedat:
+
+            print("Adding claim: recording location ", rcode)
+            rlclaim = add_item_link(repo, 'P483', rcode)
+
+            # add source if given
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                rlclaim.addSource(srcclaim)
+
+            wditem.addClaim(rlclaim)#, summary='Adding 1 claim')
+    
     # äänitysajankohta (P10135)
+    # -> generally not in finna data
     
     # kesto (P2047) (sekuntia)
     if not 'P2047' in wditem.claims:
 
         # need to format into WbQuantity
         if (final.duration != ""):
+            print("Adding claim: duration")
+
+            # set duration in seconds
             wbquant = getwbquantity(repo, final.duration, 'Q11574')
             claim = pywikibot.Claim(repo, 'P2047')
-            
             claim.setTarget(wbquant)
             
-            srcclaim = add_item_source_url(repo, final.sourceurl)
-            claim.addSource(srcclaim)
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                claim.addSource(srcclaim)
 
             wditem.addClaim(claim)#, summary='Adding 1 claim')
  
     # release date julkaisupäivä (P577) (date formatting?)
     if not 'P577' in wditem.claims:
 
+        # TODO: parse full date to wikibase-date (if given)
+
         if (final.year != ""):
+            print("Adding claim: release date")
+
             # only year now
             wbdate = getwbdate(int(final.year))
-            
-            print("Adding claim: released in")
             claim = pywikibot.Claim(repo, 'P577')
             #target = pywikibot.ItemPage(repo, released) 
             claim.setTarget(wbdate)
             
-            srcclaim = add_item_source_url(repo, final.sourceurl)
-            claim.addSource(srcclaim)
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                claim.addSource(srcclaim)
 
             wditem.addClaim(claim)#, summary='Adding 1 claim')
             
@@ -1281,8 +1441,9 @@ def add_album_properties(repo, wditem, final):
             genreclaim = add_item_link(repo, 'P136', gcode)
 
             # add source if given
-            srcclaim = add_item_source_url(repo, final.sourceurl)
-            genreclaim.addSource(srcclaim)
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                genreclaim.addSource(srcclaim)
 
             wditem.addClaim(genreclaim)#, summary='Adding 1 claim')
 
@@ -1299,20 +1460,26 @@ def add_album_properties(repo, wditem, final):
             langclaim = add_item_link(repo, 'P407', langqcode)
 
             # add source if given
-            srcclaim = add_item_source_url(repo, final.sourceurl)
-            langclaim.addSource(srcclaim)
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                langclaim.addSource(srcclaim)
 
             wditem.addClaim(langclaim)#, summary='Adding 1 claim')
 
-    # teoksen tyyppi (P7937)
+    # teoksen tyyppi (P7937) - release type
+    # (studio, live..)
     if not 'P7937' in wditem.claims:
         if (final.releasetype != ""):
         
             print("Adding claim: type", final.releasetype)
-            claim = pywikibot.Claim(repo, 'P7937')
-            target = pywikibot.ItemPage(repo, final.releasetype) 
-            claim.setTarget(target)
-            wditem.addClaim(claim)#, summary='Adding 1 claim')
+            typeclaim = add_item_link(repo, 'P7937', final.releasetype)
+
+            # add source if given
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                typeclaim.addSource(srcclaim)
+
+            wditem.addClaim(typeclaim)#, summary='Adding 1 claim')
 
     # levymerkki (P264)
     if not 'P264' in wditem.claims:
@@ -1325,8 +1492,9 @@ def add_album_properties(repo, wditem, final):
             labelclaim = add_item_link(repo, 'P264', lq)
 
             # add source if given
-            srcclaim = add_item_source_url(repo, final.sourceurl)
-            labelclaim.addSource(srcclaim)
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                labelclaim.addSource(srcclaim)
 
             wditem.addClaim(labelclaim)#, summary='Adding 1 claim')
 
@@ -1348,8 +1516,9 @@ def add_album_properties(repo, wditem, final):
             #placeclaim = add_item_link(repo, 'P291', pq)
 
             # add source if given
-            #srcclaim = add_item_source_url(repo, final.sourceurl)
-            #placeclaim.addSource(srcclaim)
+            #if (final.sourceurl != ""):
+                #srcclaim = add_item_source_url(repo, final.sourceurl)
+                #placeclaim.addSource(srcclaim)
 
             #wditem.addClaim(placeclaim)#, summary='Adding 1 claim')
 
@@ -1360,15 +1529,14 @@ def add_album_properties(repo, wditem, final):
             # todo: also validate that qcode is for a city or a country?
             # TODO: we might need even better filtering before enabling this..
 
-            
             locclaim = add_item_link(repo, 'P291', locq)
 
             # add source if given
-            srcclaim = add_item_source_url(repo, final.sourceurl)
-            locclaim.addSource(srcclaim)
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                locclaim.addSource(srcclaim)
 
             wditem.addClaim(locclaim)#, summary='Adding 1 claim')
-
 
 
 def add_album_identifiers(repo, wditem, commands):
@@ -1466,7 +1634,7 @@ def check_if_album_exists_by_qid(repo, albumqid):
 
 def check_if_album_exists_by_name(repo, albumtitle, artistqcode):
 
-    albums = searchItembySparql(repo, albumtitle, True, True)
+    albums = searchItembySparql(repo, albumtitle, True, True, False)
     if (len(albums) == 0):
         return False
 
@@ -1525,6 +1693,13 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (typeqcode != ""):
             final.releasetype = typeqcode
 
+    #if (finnarecord != None and final.releasetype == ""):
+        #if (finnarecord.iscompilation == True):
+        #    final.releasetype = gettypeqcode("kokoelma-albumi")
+
+    #if "format" in commands:
+        #getdistributionqcode(commands["format"])
+
     releaseyear = ""
     if (finnarecord != None):
         releaseyear = finnarecord.getyear()
@@ -1564,6 +1739,9 @@ def recordstoparams(repo, commands, finnarecord = None):
                 if (isArtistItem(item) == False):
                     print("skipping item as not proper artist instance:", aq)
                     continue
+
+                print("DEBUG: found artist qcode:", aq, "for asteri:", fas)
+                
                 # avoid duplicates, catch errors
                 addtolist(final.artists, aq)
 
@@ -1578,7 +1756,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             # note: finna names might be "lastname, firstname" or "band (yhtye)"
             # so they might not be usable without further parsing..
             for fan in finnarecord.artistname:
-                acodes = searchItembySparql(repo, fan, False, True, 'fi')
+                acodes = searchItembySparql(repo, fan, False, True, False, 'fi')
                 if (len(acodes) == 0):
                     print("note, no qcode for artist:", fan)
 
@@ -1588,6 +1766,9 @@ def recordstoparams(repo, commands, finnarecord = None):
                     if (isArtistItem(item) == False):
                         print("skipping item as not suitable artist instance:", aq)
                         continue
+
+                    #print("DEBUG: found artist qcode:", aq, "for name:", fan)
+                    
                     # avoid duplicates, catch errors
                     addtolist(final.artists, aq)
 
@@ -1606,7 +1787,7 @@ def recordstoparams(repo, commands, finnarecord = None):
     if "genre" in commands:
         print("looking for genre:", commands["genre"])
 
-        gcodes = searchItembySparql(repo, commands["genre"], True, True, 'fi')
+        gcodes = searchItembySparql(repo, commands["genre"], True, True, False, 'fi')
         if (len(gcodes) == 0):
             print("note, no qcode for genre name:", commands["genre"])
 
@@ -1622,7 +1803,7 @@ def recordstoparams(repo, commands, finnarecord = None):
     if "muslabel" in commands:
         print("looking for publisher:", commands["muslabel"])
 
-        pqcodes = searchItembySparql(repo, commands["muslabel"], True, False, 'fi')
+        pqcodes = searchItembySparql(repo, commands["muslabel"], True, False, False, 'fi')
         if (len(pqcodes) == 0):
             print("note, no qcode for publisher:", commands["muslabel"])
             
@@ -1630,7 +1811,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             # 'Q18127' tai  'Q2442401'
 
             # try without language schema
-            pqcodes = searchItembySparql(repo, commands["muslabel"], True, False, 'en', 'Q18127')
+            pqcodes = searchItembySparql(repo, commands["muslabel"], True, False, False, 'en', 'Q18127')
 
         for pq in pqcodes:
             item = getitembyqcode(repo, pq)
@@ -1686,6 +1867,8 @@ def recordstoparams(repo, commands, finnarecord = None):
             if (isDisambiguation(item) == True):
                 continue
 
+            print("DEBUG: found producer qcode:", prodq, "for asteri:", prodast)
+
             # avoid duplicates, catch errors
             addtolist(final.producers, prodq)
 
@@ -1700,7 +1883,7 @@ def recordstoparams(repo, commands, finnarecord = None):
 
         print("DEBUG: looking for genre name:", gname)
         
-        gcodes = searchItembySparql(repo, gname, True, True, 'fi')
+        gcodes = searchItembySparql(repo, gname, True, True, False, 'fi')
         if (len(gcodes) == 0):
             print("note, no qcode for genre name:", gname)
             continue
@@ -1721,14 +1904,19 @@ def recordstoparams(repo, commands, finnarecord = None):
 
         print("DEBUG: looking for publisher:", pname)
 
-        pqcodes = searchItembySparql(repo, pname, True, False, 'fi')
+        pqcodes = searchItembySparql(repo, pname, True, False, False, 'fi')
         if (len(pqcodes) == 0):
             print("note, no qcode for publisher:", pname)
 
-            # try again
-            # 'Q18127' tai  'Q2442401'
-            # also try without language schema
-            pqcodes = searchItembySparql(repo, pname, True, False, 'en', 'Q18127')
+            # try with alias first
+            pqcodes = searchItembySparql(repo, pname, True, False, True, 'fi')
+            if (len(pqcodes) == 0):
+                # try again
+                # 'Q18127' tai  'Q2442401'
+                # also try without language schema
+                pqcodes = searchItembySparql(repo, pname, True, False, False, 'en', 'Q18127')
+                if (len(pqcodes) == 0):
+                    pqcodes = searchItembySparql(repo, pname, True, False, True, 'en', 'Q18127')
         
         for pq in pqcodes:
             item = getitembyqcode(repo, pq)
@@ -1745,8 +1933,8 @@ def recordstoparams(repo, commands, finnarecord = None):
             plname = removelastchar(plname)
             plname = plname.strip()
         # place names might have brackets around, remove before lookup
-        if (plname[0] == '[' and plname[len(plname)-1] == ']'):
-            plname = plname[1:len(plname)-1]
+        if (isinbrackets(plname) == True):
+            plname = removefirstlastbracket(plname)
 
         # we could shortcut some
         #if (plname == "maailmanlaajuinen"):
@@ -1755,7 +1943,7 @@ def recordstoparams(repo, commands, finnarecord = None):
 
         # skip for now, needs better way to determine usable places..
         pqcodes = list()
-        #pqcodes = searchItembySparql(repo, plname, True, True, 'fi')
+        #pqcodes = searchItembySparql(repo, plname, True, True, False, 'fi')
         if (len(pqcodes) == 0):
             print("note, no qcode for place:", plname)
             continue
@@ -1784,7 +1972,7 @@ def recordstoparams(repo, commands, finnarecord = None):
         #if (plname == "Suomi"):
 
         # should be country name
-        locqcodes = searchItembySparql(repo, locname, True, False, 'fi', 'Q3624078')
+        locqcodes = searchItembySparql(repo, locname, True, False, False, 'fi', 'Q3624078')
         if (len(locqcodes) == 0):
             print("note, no qcode for location:", locname)
             continue
@@ -1807,6 +1995,23 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.location, locq)
 
+    for recstudio in finnarecord.recordedat:
+        print("DEBUG: looking for studio name:", recstudio)
+        
+        reccodes = searchItembySparql(repo, recstudio, True, True, False, 'fi')
+        if (len(reccodes) == 0):
+            print("note, no qcode for studio name:", recstudio)
+            
+            # try alias
+            reccodes = searchItembySparql(repo, recstudio, True, True, True, 'fi')
+
+        for rcq in reccodes:
+            item = getitembyqcode(repo, rcq)
+            if (isStudioItem(item) == False):
+                print("skipping item as not proper studio instance:", rcq)
+                continue
+            # avoid duplicates, catch errors
+            addtolist(final.recordedat, rcq)
 
     return final
 
