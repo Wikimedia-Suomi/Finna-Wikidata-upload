@@ -881,7 +881,7 @@ def isItemInstanceOf(item, qcode):
 # note that while finna might give items in finnish, also swedish and english are possible..
 # and if other sources are queried those might be in english.
 # some items in wikidata might not have finnish label, but might have in "mul" or english, or vice versa..
-def searchItembySparql(repo, text, witharticle=False, withschema=True, searchaltlabel=False, lang='fi', instanceof=None):
+def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltlabel=False, lang='fi', instanceof=None):
 
     print("DEBUG: searching item with label: ", text)
 
@@ -912,7 +912,7 @@ def searchItembySparql(repo, text, witharticle=False, withschema=True, searchalt
     if (instanceof != None):
         query += ' ?item wdt:P31 wd:' + instanceof + ' .'
 
-    if (witharticle == True):
+    if (withabout == True):
         # without this query may timeout or result in error sometimes..
         # but might need to remove this sometimes to get any results,
         # also could be needed to filter out some other odd things..
@@ -1235,6 +1235,15 @@ def isGenreItem(item):
         
         # musiikkityyli (Q188451)
         if (qid == 'Q188451'):
+            return True
+
+    subclass_of = item.claims.get('P279', [])
+    for sc in subclass_of:
+
+        qid = sc.getTarget().id
+        
+        # pohjoismainen kansanmusiikki (Q7050752)
+        if (qid == 'Q7050752'):
             return True
         
     return False
@@ -1878,7 +1887,8 @@ def recordstoparams(repo, commands, finnarecord = None):
             addtolist(final.producers, prodq)
 
 
-    # may have multiple genres
+    # may have multiple genres:
+    # genres are complicated and overlapping aliases
     for gname in finnarecord.genres:
         
         # cleanup
@@ -1888,6 +1898,7 @@ def recordstoparams(repo, commands, finnarecord = None):
 
         print("DEBUG: looking for genre name:", gname)
         
+        # might give too wide results..
         gcodes = searchItembySparql(repo, gname, True, True, False, 'fi')
         if (len(gcodes) == 0):
             print("note, no qcode for genre name:", gname)
@@ -1900,7 +1911,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.genres, gq)
 
-    # try to fetch qcode by name from record (if given)
+    # publisher name: record label
     for pname in finnarecord.publishernames:
 
         if (endswith(pname, ";") == True):
@@ -1909,7 +1920,7 @@ def recordstoparams(repo, commands, finnarecord = None):
 
         print("DEBUG: looking for publisher:", pname)
 
-        pqcodes = searchItembySparql(repo, pname, True, False, False, 'fi')
+        pqcodes = searchItembySparql(repo, pname, False, False, False, 'fi')
         if (len(pqcodes) == 0):
             print("note, no qcode for publisher:", pname)
 
@@ -1919,7 +1930,7 @@ def recordstoparams(repo, commands, finnarecord = None):
                 # try again
                 # 'Q18127' tai  'Q2442401'
                 # also try without language schema
-                pqcodes = searchItembySparql(repo, pname, True, False, False, 'en', 'Q18127')
+                pqcodes = searchItembySparql(repo, pname, False, False, False, 'en', 'Q18127')
                 if (len(pqcodes) == 0):
                     pqcodes = searchItembySparql(repo, pname, True, False, True, 'en', 'Q18127')
         
@@ -1932,6 +1943,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.publishers, pq)
 
+    # publishing location/area
     for plname in finnarecord.publishingplaces:
         
         if (endswith(plname, ":") == True):
@@ -1969,6 +1981,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.places, pq)
 
+    # publishing location/area
     for locname in finnarecord.location:
         
         # we could shortcut some
@@ -2000,6 +2013,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.location, locq)
 
+    # recording studio
     for recstudio in finnarecord.recordedat:
         print("DEBUG: looking for studio name:", recstudio)
         
