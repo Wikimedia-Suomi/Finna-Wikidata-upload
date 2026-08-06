@@ -583,7 +583,8 @@ class FinnaRecord:
                 # <datafield tag="655" ind1=" " ind2="7"><subfield code="8">2\\u</subfield><subfield code="a">doom metal</subfield>
                 # <datafield tag="655" ind1=" " ind2="7"><subfield code="a">popmusiikki</subfield>
                 # <datafield tag="655" ind1=" " ind2="7"><subfield code="a">kokoomateokset
-                if (dftag == "655" and dind1 == " " and dind2 == 7 and sfcode == "a"): # -> genre
+                # tag, 655 ind1   ind2 7 code, a text jazz
+                if (dftag == "655" and dind1 == " " and dind2 == "7" and sfcode == "a"): # -> genre
                     if (sftext == "kokoomateokset"):
                         self.iscompilation = True
                     
@@ -1350,7 +1351,7 @@ def add_album_properties(repo, wditem, final):
     # just presenters? role for instrument?
 
     existingproducerqcodes = getQcodesFromProperty(wditem, 'P162')
-    print("DEBUG: existing procuders:", existingproducerqcodes)
+    print("DEBUG: existing producers:", existingproducerqcodes)
 
     # tuottaja (P162)
     if not 'P162' in wditem.claims:
