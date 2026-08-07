@@ -104,7 +104,7 @@ class FinnaRecord:
         self.recordedat = list() # äänitysstudio?
         self.recordingplace = list() # äänityspaikka
         
-        self.iscompilation = False
+        self.compilation = False
         
         # these are pretty self-explanatory..
         self.presenterasteri = list() # esittäjän asteri-id
@@ -117,7 +117,7 @@ class FinnaRecord:
         # distribution formats, CD, LP..
         # we can only get this per each item,
         # for other formats we would need different finna items
-        #self.releaseformat = list()
+        self.releaseformat = list()
         
         
     # simple checks if received record could be usable
@@ -270,6 +270,26 @@ class FinnaRecord:
 
         return False
         
+    def iscompilation(self):
+        records = self.finnarecord['records'][0]
+
+        # parse subjects for "kokoelmat."
+        # might have different tags as well, see what comes up..
+        
+        if (self.compilation == True):
+            return True
+
+        if "subjects" not in records:
+            return False
+        
+        f_sub = records['subjects']
+        for sub in f_sub:
+            for s in sub:
+                ff_value = s.strip()
+                if (ff_value == "kokoelmat."):
+                    return True
+
+        return False
 
     def parsepresenters(self):
         
@@ -529,6 +549,8 @@ class FinnaRecord:
                     cleanupaddtolist(self.publishingplaces, tmptext)
 
                 if (dftag == "260" and dind1 == " " and dind2 == " " and sfcode == "b"): # -> publisher name 
+                    
+                    # if this is found, don't add from other similar tags to avoid duplicates?
 
                     tmptext = sftext
                     if (endswith(tmptext, ",") == True):
@@ -538,19 +560,28 @@ class FinnaRecord:
                     # cleanup, don't add duplicates
                     cleanupaddtolist(self.publishernames, tmptext)
                 
+                # <datafield tag="264" ind1=" " ind2="1"><subfield code="a">[Kustannuspaikka tuntematon] :</subfield><subfield code="b">Ekvapoint Oy,</subfield><subfield code="c">[2017]</subfield>
                 if (dftag == "264" and dind1 == " " and dind2 == "1" and sfcode == "a"): # -> publishing place name 
                     
                     # cleanup, don't add duplicates
                     cleanupaddtolist(self.publishingplaces, sftext)
                         
+                if (dftag == "264" and dind1 == " " and dind2 == 1 and sfcode == "b"): # -> publisher name 
+                    # this might be "brand" instead of actual publishing entity? try to use more accurate
+                    if (len(self.publishernames) == 0):
+                        # cleanup, don't add duplicates
+                        cleanupaddtolist(self.publishernames, sftext)
+
+                # if dftag == 264, ind1 == " ", ind2 == 1 and sfcode == c -> year 
+
+                # if dftag == 264, ind1 == " ", ind2 == 4 and sfcode == c -> year 
+
                 # <datafield tag="028" ind1="0" ind2="1"><subfield code="b">New Music Community</subfield><subfield code="a">NMC-001</subfield>
                 if (dftag == "028" and dind1 == "0" and dind2 == "1" and sfcode == "b"): # -> publisher name 
-                    # cleanup, don't add duplicates
-                    cleanupaddtolist(self.publishernames, sftext)
-
-                if (dftag == "264" and dind1 == " " and dind2 == 1 and sfcode == "b"): # -> publisher name 
-                    # cleanup, don't add duplicates
-                    cleanupaddtolist(self.publishernames, sftext)
+                    # this might be "brand" instead of actual publishing entity? try to use more accurate
+                    if (len(self.publishernames) == 0):
+                        # cleanup, don't add duplicates
+                        cleanupaddtolist(self.publishernames, sftext)
                     
                 # <datafield tag="370" ind1=" " ind2=" "><subfield code="g">Suomi</subfield> 
                 if (dftag == "370" and dind1 == " " and dind2 == " " and sfcode == "g"): # -> luontipaikka
@@ -586,16 +617,11 @@ class FinnaRecord:
                 # tag, 655 ind1   ind2 7 code, a text jazz
                 if (dftag == "655" and dind1 == " " and dind2 == "7" and sfcode == "a"): # -> genre
                     if (sftext == "kokoomateokset"):
-                        self.iscompilation = True
+                        self.compilation = True
                     
                     # cleanup, don't add duplicates
                     cleanupaddtolist(self.genres, sftext)
-                    
-
-                # if dftag == 264, ind1 == " ", ind2 == 1 and sfcode == c -> year 
-
-                # if dftag == 264, ind1 == " ", ind2 == 4 and sfcode == c -> year 
-                
+               
                 # kesto
                 #<datafield tag="306" ind1=" " ind2=" "><subfield code="a">000349</subfield> # -> kesto 3'49
                 #<datafield tag="306" ind1=" " ind2=" "><subfield code="a">000302</subfield> # -> kesto 3'02
@@ -612,6 +638,12 @@ class FinnaRecord:
                         isec += imin * 60
                         isec += ihour * 60 * 60
                         self.duration = str(isec)
+
+                # <datafield tag="300" ind1=" " ind2=" "><subfield code="a">1 C-kasetti (00\'00)</subfield>
+                if (dftag == "300" and dind1 == " " and dind2 == " " and sfcode == "a"): #
+                    #if (sftext.find("C-kasetti") > 0):
+                    cleanupaddtolist(self.releaseformat, sftext)
+
 
         print("parsed fields in xml record")
         return True
@@ -1707,9 +1739,9 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (typeqcode != ""):
             final.releasetype = typeqcode
 
-    #if (finnarecord != None and final.releasetype == ""):
-        #if (finnarecord.iscompilation == True):
-        #    final.releasetype = gettypeqcode("kokoelma-albumi")
+    if (finnarecord != None and final.releasetype == ""):
+        if (finnarecord.iscompilation() == True):
+            final.releasetype = gettypeqcode("kokoelma-albumi")
 
     #if "format" in commands:
         #getdistributionqcode(commands["format"])
@@ -1846,7 +1878,7 @@ def recordstoparams(repo, commands, finnarecord = None):
         final.issingle = True
         final.instancetype = 'Q134556' # single
         print("album is single", final.instancetype)
-    elif (finnarecord.iscompilation == True):
+    elif (finnarecord.iscompilation() == True):
         final.instancetype = 'Q482994' # music album
         print("album is compilation", final.instancetype)
     else:
@@ -1934,6 +1966,10 @@ def recordstoparams(repo, commands, finnarecord = None):
                 if (len(pqcodes) == 0):
                     pqcodes = searchItembySparql(repo, pname, True, False, True, 'en', 'Q18127')
         
+        # TODO: check also publishingplaces if in same city/country
+        # since same publisher name might exists in different countries but be entirely different
+        # (for example, LeBaron Music)
+        
         for pq in pqcodes:
             item = getitembyqcode(repo, pq)
             # must be record label or record company
@@ -2017,12 +2053,12 @@ def recordstoparams(repo, commands, finnarecord = None):
     for recstudio in finnarecord.recordedat:
         print("DEBUG: looking for studio name:", recstudio)
         
-        reccodes = searchItembySparql(repo, recstudio, True, True, False, 'fi')
+        reccodes = searchItembySparql(repo, recstudio, False, False, False, 'fi')
         if (len(reccodes) == 0):
             print("note, no qcode for studio name:", recstudio)
             
             # try alias
-            reccodes = searchItembySparql(repo, recstudio, True, True, True, 'fi')
+            reccodes = searchItembySparql(repo, recstudio, False, False, True, 'fi')
 
         for rcq in reccodes:
             item = getitembyqcode(repo, rcq)
@@ -2060,16 +2096,27 @@ def create_album_item(repo, final, artistlabel):
     album_desc_en = albumtype + " by " + artistlabel
     #album_desc_fi = artistlabel + " albumi"
     album_desc_sv = albumtype + " av " + artistlabel
-    album_desc_fr = albumtype + " de " + artistlabel
+    album_desc_fr = albumtype + " de " + artistlabel # de/des
+
+    #album_desc_de = albumtype + " von " + artistlabel # Album
+    #album_desc_es = albumtype + " de " + artistlabel # álbum
+    #album_desc_it = albumtype + " dei " + artistlabel # degli/dei/di
+    #album_desc_pt = albumtype + " de " + artistlabel # álbum
 
     # more accurate date? parse to year
     if (len(final.year) > 0):
         # only year for now, add support for date
         year = str(final.year)
         album_desc_en = year + " " + album_desc_en
-    #    album_desc_fi = album_desc_fi + " vuodelta " + str(year)
+    #    album_desc_fi = album_desc_fi + " vuodelta " + year
         album_desc_sv = album_desc_sv + " från " + year
         album_desc_fr = album_desc_fr + " sorti en " + year
+        #album_desc_fr = album_desc_fr + ", sorti en " + year
+        
+        #album_desc_de = album_desc_de + " (" + year + ")"
+        #album_desc_es = album_desc_es + " de " + year
+        #album_desc_it = album_desc_it + " del " + year
+        #album_desc_pt = album_desc_pt + " de " + year
     
     data = {"labels": {"en": final.albumtitle, "fi": final.albumtitle, "sv": final.albumtitle, "fr": final.albumtitle, "mul": final.albumtitle},
     "descriptions": {"en": album_desc_en, "sv": album_desc_sv, "fr": album_desc_fr}}
