@@ -541,7 +541,7 @@ class FinnaRecord:
                     if (endswith(tmptext, ":") == True):
                         tmptext = removelastchar(tmptext)
                         tmptext = tmptext.strip()
-                        
+
                     if (isinbrackets(tmptext) == True):
                         tmptext = removefirstlastbracket(tmptext)
                     
@@ -553,24 +553,48 @@ class FinnaRecord:
                     # if this is found, don't add from other similar tags to avoid duplicates?
 
                     tmptext = sftext
+                    # check for ; as well?
+                    if (endswith(tmptext, ",") == True):
+                        tmptext = removelastchar(tmptext)
+                        tmptext = tmptext.strip()
+
+                    if (isinbrackets(tmptext) == True):
+                        tmptext = removefirstlastbracket(tmptext)
+                    
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.publishernames, tmptext)
+
+                if (dftag == "260" and dind1 == " " and dind2 == " " and sfcode == "c"): # -> publishing year
+
+                    tmptext = sftext
+                    if (isinbrackets(tmptext) == True):
+                        tmptext = removefirstlastbracket(tmptext)
+                    # also remove other characters if anything besides a year (copyright mark or such)
+                    #self.year = tmptext
+                
+                # <datafield tag="264" ind1=" " ind2="1"><subfield code="a">[Kustannuspaikka tuntematon] :</subfield><subfield code="b">Ekvapoint Oy,</subfield><subfield code="c">[2017]</subfield>
+                # <datafield tag="264" ind1=" " ind2="1"><subfield code="a">[Espoo] :</subfield><subfield code="b">Ranka Kustannus,</subfield><subfield code="c">[2025]</subfield>
+                if (dftag == "264" and dind1 == " " and dind2 == "1" and sfcode == "a"): # -> publishing place name 
+
+                    tmptext = sftext
+                    # check for ; as well?
+                    if (endswith(tmptext, ",") == True or endswith(tmptext, ":") == True):
+                        tmptext = removelastchar(tmptext)
+                        tmptext = tmptext.strip()
+                    
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.publishingplaces, tmptext)
+                        
+                if (dftag == "264" and dind1 == " " and dind2 == "1" and sfcode == "b"): # -> publisher name 
+
+                    tmptext = sftext
+                    # check for ; as well?
                     if (endswith(tmptext, ",") == True):
                         tmptext = removelastchar(tmptext)
                         tmptext = tmptext.strip()
                     
                     # cleanup, don't add duplicates
                     cleanupaddtolist(self.publishernames, tmptext)
-                
-                # <datafield tag="264" ind1=" " ind2="1"><subfield code="a">[Kustannuspaikka tuntematon] :</subfield><subfield code="b">Ekvapoint Oy,</subfield><subfield code="c">[2017]</subfield>
-                if (dftag == "264" and dind1 == " " and dind2 == "1" and sfcode == "a"): # -> publishing place name 
-                    
-                    # cleanup, don't add duplicates
-                    cleanupaddtolist(self.publishingplaces, sftext)
-                        
-                if (dftag == "264" and dind1 == " " and dind2 == 1 and sfcode == "b"): # -> publisher name 
-                    # this might be "brand" instead of actual publishing entity? try to use more accurate
-                    if (len(self.publishernames) == 0):
-                        # cleanup, don't add duplicates
-                        cleanupaddtolist(self.publishernames, sftext)
 
                 # if dftag == 264, ind1 == " ", ind2 == 1 and sfcode == c -> year 
 
@@ -891,6 +915,21 @@ def getaliasesbylangfromitem(item, lang):
             return alabels
     return None
 
+# get labels (names) of entities in given property of given item
+def getlabelofpropbylangfromitem(repo, item, prop, lang):
+
+    qlist = list()
+    
+    propclaims = item.claims.get(prop, [])
+    for claim in propclaims:
+        qid = claim.getTarget().id
+        propitem = getitembyqcode(repo, qid)
+        if (propitem != None):
+            lbls = getlabelbylangfromitem(propitem, lang)
+            for l in lbls:
+                addtolist(qlist, qlist)
+    return qlist
+
 def isItemInstanceOf(item, qcode):
 
     if (qcode == None or qcode == ""):
@@ -910,16 +949,8 @@ def isItemInstanceOf(item, qcode):
 
 #def runSparqlQuery(repo, query):
 
-# note that while finna might give items in finnish, also swedish and english are possible..
-# and if other sources are queried those might be in english.
-# some items in wikidata might not have finnish label, but might have in "mul" or english, or vice versa..
-def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltlabel=False, lang='fi', instanceof=None):
+def makeSparqlQuery(text, withabout=False, withschema=True, searchaltlabel=False, lang='fi', instanceof=None):
 
-    print("DEBUG: searching item with label: ", text)
-
-    endpoint = 'https://query.wikidata.org/sparql'
-    entity_url = 'https://www.wikidata.org/entity/' # must be provided when endpoint is given
-    
     # TODO: filter by instance of music style etc. in query, 
     # needs both property and qcodes..
     
@@ -929,6 +960,8 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
     #query += ' ?item rdfs:label ?itemLabel.'
     #query += ' FILTER(CONTAINS(LCASE(?itemLabel), "' + genre + '"@' + lang +')).'
     #query += ' } limit 10'
+
+    # TODO: also add instance of in results to simiplify further parsing?
 
     #query = 'SELECT distinct ?item ?itemLabel ?itemDescription WHERE {'
     query = ''
@@ -944,6 +977,10 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
     if (instanceof != None):
         query += ' ?item wdt:P31 wd:' + instanceof + ' .'
 
+    # else: # return found instance (also add into select-part)
+    # if we use this we would get two rows when there's two instances of in item..
+    #query += ' ?item wdt:P31 ?instanceOf.'
+
     if (withabout == True):
         # without this query may timeout or result in error sometimes..
         # but might need to remove this sometimes to get any results,
@@ -957,6 +994,23 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
     #query += ' ?article schema:isPartOf <https://' + lang + '.wikipedia.org/>.' # not useful if there is no article in wikipedia?
     query += ' SERVICE wikibase:label { bd:serviceParam wikibase:language "' + lang + '". } }'
 
+    return query
+
+# note that while finna might give items in finnish, also swedish and english are possible..
+# and if other sources are queried those might be in english.
+# some items in wikidata might not have finnish label, but might have in "mul" or english, or vice versa..
+def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltlabel=False, lang='fi', instanceof=None):
+
+    print("DEBUG: searching item with label: ", text)
+
+    endpoint = 'https://query.wikidata.org/sparql'
+    entity_url = 'https://www.wikidata.org/entity/' # must be provided when endpoint is given
+    
+    # TODO: filter by instance of music style etc. in query, 
+    # needs both property and qcodes..
+    
+    query = makeSparqlQuery(text, withabout, withschema, searchaltlabel, lang, instanceof)
+    
 
     print("DEBUG: using endpoint: ", endpoint)
 
@@ -974,12 +1028,16 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
     print("DEBUG: checking query results.. ")
 
     # TODO:
-    # might have multiple publishers for example
+    # might have multiple publishers for example,
+    # add something like instance of to separate record label and record company (where it might matter)
+    # -> store tuple instead of plain qcode?
     qcodes = list()
 
     for row in data:
         print("DEBUG: row:", row)
         page_id = str(row['item'])
+        
+        #page_instance = str(row['instanceOf'])
         
         # error: page_id is a link, not just qcode..
         # Http://www.wikidata.org/entity/Q484179
@@ -1002,20 +1060,33 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
         
         if (isDisambiguation(item) == True):
             continue
+
+        page_label = str(row['itemLabel'])
+        # check: not in every query
+        #page_altlabel = str(row['itemAltLabel'])
+        print("DEBUG: id:", page_id, "label:", page_label)
         
-        lbl = getlabelbylangfromitem(item, lang)
-        if (lbl == None):
+        #lbl = getlabelbylangfromitem(item, lang)
+        #if (lbl == None):
             # no label in this language?
-            print("no label in language: ", lang)
-            continue
+        #    print("no label in language: ", lang)
+        #    continue
+        #if (lbl != page_label):
+        #    print("WARN: id", page_id, "label", page_label, "differs from item", lbl)
+        
+
+        # TODO: comparison this way is bugged: 
+        # 'itemLabel': Vallila Music House@fi does not match search Vallila Music House
+        # -> strip()/trim() ?
+        # also upper/lower-case might not match in some cases
 
         # TODO: compare with alternate label(s) if there are multiple
         # might have difference in upper/lower case in some cases? (Of, And..)
         #if (lbl != text and lbl.lower() != text.lower()):
-        if (lbl != text and searchaltlabel == False):
+        #if (page_label.strip() != text.strip() and searchaltlabel == False):
             # not correct label for some reason
-            print("label does not match search: ", lbl)
-            continue
+        #    print("label does not match search: ", page_label)
+        #    continue
 
         # we would want to verify item is instance of correct type:
         # query may give anything at any type currently.
@@ -1026,10 +1097,14 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
         #print("using qid", itemqcode)
         # avoid duplicates
         addtolist(qcodes, itemqcode)
+        
+        # should use qcode to name pair directly? map<> alternative?
+        #addtolist(qcodes, tuple((itemqcode, page_label)))
 
     if (len(qcodes) == 0):
         print("did not find item for:", text)
     return qcodes
+
 
 # search by value in property instead of text in label:
 # should be string or integer without language specific label(s)
@@ -1140,6 +1215,7 @@ def getdistributionqcode(dist):
     # - digitaalinen jakelu (Q269415)
     # - musiikin lataus (Q6473564)
     # - musiikin suoratoisto (Q15982450)
+    # C-äänikasetti
     
     d_disttoqcode = dict()
     d_disttoqcode["CD-levy"] = "Q34467"
@@ -1148,19 +1224,6 @@ def getdistributionqcode(dist):
         return d_disttoqcode[dist]
     return ""
 
-# todo: read config for mapping
-def getgenreqcode(genre):
-
-    # mapping genre to qcode
-    d_genretoqcode = dict()
-    d_genretoqcode["power metal"] = "Q57143"
-    d_genretoqcode["sinfoninen metalli"] = "Q486415"
-    d_genretoqcode["metalcore"] = "Q183862"
-    d_genretoqcode["black metal"] = "Q132438"
-    
-    if genre in d_genretoqcode:
-        return d_genretoqcode[genre]
-    return ""
 
 def getprenseterroleqcode(prole):
 
@@ -1335,6 +1398,13 @@ def add_item_value(repo, prop, value):
     claim.setTarget(value)
     return claim
 
+# qualifier needs a property type and value
+def add_item_qualifier(repo, qprop, qtarget):
+
+    q_claim = pywikibot.Claim(repo, qprop, is_reference=False, is_qualifier=True)
+    q_claim.setTarget(qtarget)
+    return q_claim
+
 # todo: other possible parameters,
 # also set date of access ?
 def add_item_source_url(repo, sourceurl):
@@ -1391,8 +1461,8 @@ def add_album_properties(repo, wditem, final):
     # TODO: members of a band in specific album
     # just presenters? role for instrument?
 
-    existingproducerqcodes = getQcodesFromProperty(wditem, 'P162')
-    print("DEBUG: existing producers:", existingproducerqcodes)
+    #existingproducerqcodes = getQcodesFromProperty(wditem, 'P162')
+    #print("DEBUG: existing producers:", existingproducerqcodes)
 
     # tuottaja (P162)
     if not 'P162' in wditem.claims:
@@ -1777,6 +1847,8 @@ def recordstoparams(repo, commands, finnarecord = None):
         # note that the id may be still missing in wikidata so it should be fixed
         for fas in finnarecord.presenterasteri:
 
+            print("searching for artist with asteri:", fas)
+
             # use kanto-property for asteri-id: should give only one match
             faslist = searchbySparqlPropValue(repo, "P8980", fas)
             for aq in faslist:
@@ -1943,7 +2015,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.genres, gq)
 
-    # publisher name: record label
+    # publisher name: record label or record company
     for pname in finnarecord.publishernames:
 
         if (endswith(pname, ";") == True):
@@ -1966,9 +2038,12 @@ def recordstoparams(repo, commands, finnarecord = None):
                 if (len(pqcodes) == 0):
                     pqcodes = searchItembySparql(repo, pname, True, False, True, 'en', 'Q18127')
         
-        # TODO: check also publishingplaces if in same city/country
-        # since same publisher name might exists in different countries but be entirely different
-        # (for example, LeBaron Music)
+        # check also that publisher from query is in same country as publisher in finna data:
+        # different publishers with same name can exist in different countries (for example, LeBaron Music),
+        # finna data has often publishing city so try to match that to location of headquarters as well
+
+        # TODO: also try to prioritize if there is both a record label and a record company in results..
+        # don't link to both though qcodes might be different but names same
         
         for pq in pqcodes:
             item = getitembyqcode(repo, pq)
@@ -1976,8 +2051,24 @@ def recordstoparams(repo, commands, finnarecord = None):
             if (isRecordLabel(item) == False):
                 print("skipping item as not proper record label instance:", pq)
                 continue
-            # avoid duplicates, catch errors
-            addtolist(final.publishers, pq)
+            
+            # we could try to get country code from name of location,
+            # but there are cities with same name in different countries..
+            
+            # name of location(s) of hq for this publisher (for country match) as finna gives city
+            hqplaces = getlabelofpropbylangfromitem(repo, item, 'P159', 'fi')
+            print("DEBUG: hq-list", hqplaces)
+            
+            if (len(finnarecord.publishingplaces) > 0 and len(hqplaces) > 0):
+                for ppname in finnarecord.publishingplaces:
+                    if ppname in hqplaces:
+                        # ok, match: keep qcode of this publisher
+                        addtolist(final.publishers, pq)
+                    else:
+                        print("DEBUG: place", ppname ,"not found in hq-list")
+            else:
+                # we don't have publishing places to check so keep the qcode of publisher
+                addtolist(final.publishers, pq)
 
     # publishing location/area
     for plname in finnarecord.publishingplaces:
