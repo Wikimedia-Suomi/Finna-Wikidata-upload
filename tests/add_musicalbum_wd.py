@@ -72,6 +72,11 @@ def addtolist(dest, s):
         return
     dest.append(s)
 
+def additemtolist(dest, item):
+    if item in dest:
+        return
+    dest.append(item)
+
 # cleanup and normalize information to plain list without duplicates
 def cleanupaddtolist(dest, source):
     if isinstance(source, list):
@@ -1033,6 +1038,11 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
     # -> store tuple instead of plain qcode?
     qcodes = list()
 
+    # in case of multiple entries and multiple rows, don't check same again
+    rejectedqcodes = list()
+
+    accepteditems = list()
+
     for row in data:
         print("DEBUG: row:", row)
         page_id = str(row['item'])
@@ -1046,6 +1056,14 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
         if (isQcode(itemqcode) == False):
             print("not a valid qcode: ", itemqcode)
             continue
+
+        # queries can give duplicates if items have multiple instances of
+        # or alternative labels (depending on query) -> skip check if we already accepted same qcode
+        if itemqcode in qcodes:
+            continue
+        if itemqcode in rejectedqcodes:
+            # already rejected, duplicate row?
+            continue
         
         # check: in some cases it is not in wd:qcode format but might have page link
         # like <https://fi.wikipedia.org/wiki/Universal_Music_Group>
@@ -1053,12 +1071,18 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
         # but we can't locate some wikidata entries if that is applied for some reason..
         # so anyway, double-check regardless of whatever we use and skip if not valid qcode
 
+        # should not give redirects but filter those out if any
         item = getitembyqcode(repo, itemqcode)
         if (item == None):
             # invalid qcode?
+            #print("DEBUG: invalid qcode ", itemqcode, " or other error?")
+            addtolist(rejectedqcodes, itemqcode)
             continue
-        
+
+        # disambiguation should not be used as targets
         if (isDisambiguation(item) == True):
+            #print("DEBUG: item ", page_id, " is for disambiguation only")
+            addtolist(rejectedqcodes, itemqcode)
             continue
 
         page_label = str(row['itemLabel'])
@@ -1098,12 +1122,17 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
         # avoid duplicates
         addtolist(qcodes, itemqcode)
         
+        additemtolist(accepteditems, item)
+        
         # should use qcode to name pair directly? map<> alternative?
+        # if we fetch more information in same query we can get douple entries
+        # due to multiple instances of and such, need to handle those as well.
+        # instead, keep the item instance itself?
         #addtolist(qcodes, tuple((itemqcode, page_label)))
 
-    if (len(qcodes) == 0):
+    if (len(accepteditems) == 0):
         print("did not find item for:", text)
-    return qcodes
+    return accepteditems
 
 
 # search by value in property instead of text in label:
@@ -1136,6 +1165,8 @@ def searchbySparqlPropValue(repo, propnum, pval):
 
     qcodes = list()
 
+    accepteditems = list()
+
     for row in data:
         print("DEBUG: row:", row)
         page_id = str(row['item'])
@@ -1147,13 +1178,23 @@ def searchbySparqlPropValue(repo, propnum, pval):
         if (isQcode(itemqcode) == False):
             print("not a valid qcode: ", itemqcode)
             continue
+
+        item = getitembyqcode(repo, itemqcode)
+        if (item == None):
+            continue
+        
+        # a given property should be used on disambiguation pages?
+        if (isDisambiguation(item) == True):
+            continue
         
         #print("using qid", itemqcode)
         addtolist(qcodes, itemqcode)
 
-    if (len(qcodes) == 0):
+        additemtolist(accepteditems, item)
+
+    if (len(accepteditems) == 0):
         print("did not find item for:", pval)
-    return qcodes
+    return accepteditems
     
 
 # note: we need "WbTime" which is not a standard datetime
@@ -1756,8 +1797,8 @@ def check_if_album_exists_by_name(repo, albumtitle, artistqcode):
 
     artistfound = False
 
-    for al in albums:
-        albumitem = getitembyqcode(repo, albumqid)
+    for albumitem in albums:
+        #albumitem = getitembyqcode(repo, albumqid)
         if (isAlbumItem(albumitem) == False):
             continue
 
@@ -1851,17 +1892,17 @@ def recordstoparams(repo, commands, finnarecord = None):
 
             # use kanto-property for asteri-id: should give only one match
             faslist = searchbySparqlPropValue(repo, "P8980", fas)
-            for aq in faslist:
-                item = getitembyqcode(repo, aq)
+            for item in faslist:
+                #item = getitembyqcode(repo, aq)
                 # must be a humand or a band
                 if (isArtistItem(item) == False):
-                    print("skipping item as not proper artist instance:", aq)
+                    print("skipping item as not proper artist instance:", item.getID())
                     continue
 
-                print("DEBUG: found artist qcode:", aq, "for asteri:", fas)
+                print("DEBUG: found artist qcode:", item.getID(), "for asteri:", fas)
                 
                 # avoid duplicates, catch errors
-                addtolist(final.artists, aq)
+                addtolist(final.artists, item.getID())
 
 
         # try to find artist by sparql,
@@ -1878,17 +1919,17 @@ def recordstoparams(repo, commands, finnarecord = None):
                 if (len(acodes) == 0):
                     print("note, no qcode for artist:", fan)
 
-                for aq in acodes:
-                    item = getitembyqcode(repo, aq)
+                for item in acodes:
+                    #item = getitembyqcode(repo, aq)
                     # must be a humand or a band
                     if (isArtistItem(item) == False):
-                        print("skipping item as not suitable artist instance:", aq)
+                        print("skipping item as not suitable artist instance:", item.getID())
                         continue
 
                     #print("DEBUG: found artist qcode:", aq, "for name:", fan)
                     
                     # avoid duplicates, catch errors
-                    addtolist(final.artists, aq)
+                    addtolist(final.artists, item.getID())
 
 
     sourceurl = ""
@@ -1909,13 +1950,13 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (len(gcodes) == 0):
             print("note, no qcode for genre name:", commands["genre"])
 
-        for gq in gcodes:
-            item = getitembyqcode(repo, gq)
+        for item in gcodes:
+            #item = getitembyqcode(repo, gq)
             if (isGenreItem(item) == False):
-                print("skipping item as not proper genre instance:", gq)
+                print("skipping item as not proper genre instance:", item.getID())
                 continue
             # avoid duplicates, catch errors
-            addtolist(final.genres, gq)
+            addtolist(final.genres, item.getID())
 
     # if publisher was given manually
     if "muslabel" in commands:
@@ -1931,14 +1972,14 @@ def recordstoparams(repo, commands, finnarecord = None):
             # try without language schema
             pqcodes = searchItembySparql(repo, commands["muslabel"], True, False, False, 'en', 'Q18127')
 
-        for pq in pqcodes:
-            item = getitembyqcode(repo, pq)
+        for item in pqcodes:
+            #item = getitembyqcode(repo, pq)
             # must be record label or record company
             if (isRecordLabel(item) == False):
-                print("skipping item as not proper record label instance:", pq)
+                print("skipping item as not proper record label instance:", item.getID())
                 continue
             # avoid duplicates, catch errors
-            addtolist(final.publishers, pq)
+            addtolist(final.publishers, item.getID())
 
     # try to fetch qcodes by record (if given)
     if (finnarecord == None):
@@ -1977,18 +2018,19 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (len(prodlist) == 0):
             print("note, no qcode for asteri-id:", prodast)
             continue
-        for prodq in prodlist:
-            item = getitembyqcode(repo, prodq)
-            if (item == None):
-                print("skipping item as not found:", prodq)
-                continue
-            if (isDisambiguation(item) == True):
-                continue
+        for item in prodlist:
+            #item = getitembyqcode(repo, prodq)
+            #if (item == None):
+            #    print("skipping item as not found:", prodq)
+            #    continue
+            #if (isDisambiguation(item) == True):
+            #    continue
+            # should be human?
 
-            print("DEBUG: found producer qcode:", prodq, "for asteri:", prodast)
+            print("DEBUG: found producer qcode:", item.getID(), "for asteri:", prodast)
 
             # avoid duplicates, catch errors
-            addtolist(final.producers, prodq)
+            addtolist(final.producers, item.getID())
 
 
     # may have multiple genres:
@@ -2007,13 +2049,13 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (len(gcodes) == 0):
             print("note, no qcode for genre name:", gname)
             continue
-        for gq in gcodes:
-            item = getitembyqcode(repo, gq)
+        for item in gcodes:
+            #item = getitembyqcode(repo, gq)
             if (isGenreItem(item) == False):
-                print("skipping item as not proper genre instance:", gq)
+                print("skipping item as not proper genre instance:", item.getID())
                 continue
             # avoid duplicates, catch errors
-            addtolist(final.genres, gq)
+            addtolist(final.genres, item.getID())
 
     # publisher name: record label or record company
     for pname in finnarecord.publishernames:
@@ -2045,11 +2087,11 @@ def recordstoparams(repo, commands, finnarecord = None):
         # TODO: also try to prioritize if there is both a record label and a record company in results..
         # don't link to both though qcodes might be different but names same
         
-        for pq in pqcodes:
-            item = getitembyqcode(repo, pq)
+        for item in pqcodes:
+            #item = getitembyqcode(repo, pq)
             # must be record label or record company
             if (isRecordLabel(item) == False):
-                print("skipping item as not proper record label instance:", pq)
+                print("skipping item as not proper record label instance:", item.getID())
                 continue
             
             # we could try to get country code from name of location,
@@ -2063,12 +2105,12 @@ def recordstoparams(repo, commands, finnarecord = None):
                 for ppname in finnarecord.publishingplaces:
                     if ppname in hqplaces:
                         # ok, match: keep qcode of this publisher
-                        addtolist(final.publishers, pq)
+                        addtolist(final.publishers, item.getID())
                     else:
                         print("DEBUG: place", ppname ,"not found in hq-list")
             else:
                 # we don't have publishing places to check so keep the qcode of publisher
-                addtolist(final.publishers, pq)
+                addtolist(final.publishers, item.getID())
 
     # publishing location/area
     for plname in finnarecord.publishingplaces:
@@ -2092,21 +2134,21 @@ def recordstoparams(repo, commands, finnarecord = None):
             print("note, no qcode for place:", plname)
             continue
         
-        for pq in pqcodes:
+        for item in pqcodes:
             # must be city or country ?
             #kaupunki (Q515)
             #valtio (Q7275)
             #itsenäinen valtio (Q3624078)
             #maa (Q6256)
 
-            item = getitembyqcode(repo, pq)
+            #item = getitembyqcode(repo, pq)
             if (isItemInstanceOf(item, 'Q515') == False 
                 and isItemInstanceOf(item, 'Q7275') == False 
                 and isItemInstanceOf(item, 'Q6256') == False):
-                print("skipping item as not proper place instance:", pq)
+                print("skipping item as not proper place instance:", item.getID())
                 continue
             # avoid duplicates, catch errors
-            addtolist(final.places, pq)
+            addtolist(final.places, item.getID())
 
     # publishing location/area
     for locname in finnarecord.location:
@@ -2122,7 +2164,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             print("note, no qcode for location:", locname)
             continue
         
-        for locq in locqcodes:
+        for item in locqcodes:
             # must be city or country ?
             #kaupunki (Q515)
             #valtio (Q7275)
@@ -2131,14 +2173,14 @@ def recordstoparams(repo, commands, finnarecord = None):
 
             # itsenäinen valtio (Q3624078)
             # yhtenäisvaltio (Q179164)
-            item = getitembyqcode(repo, locq)
+            #item = getitembyqcode(repo, locq)
             if (isItemInstanceOf(item, 'Q515') == False 
                 and isItemInstanceOf(item, 'Q7275') == False 
                 and isItemInstanceOf(item, 'Q6256') == False):
-                print("skipping item as not proper place instance:", locq)
+                print("skipping item as not proper place instance:", item.getID())
                 continue
             # avoid duplicates, catch errors
-            addtolist(final.location, locq)
+            addtolist(final.location, item.getID())
 
     # recording studio
     for recstudio in finnarecord.recordedat:
@@ -2151,13 +2193,13 @@ def recordstoparams(repo, commands, finnarecord = None):
             # try alias
             reccodes = searchItembySparql(repo, recstudio, False, False, True, 'fi')
 
-        for rcq in reccodes:
-            item = getitembyqcode(repo, rcq)
+        for item in reccodes:
+            #item = getitembyqcode(repo, rcq)
             if (isStudioItem(item) == False):
-                print("skipping item as not proper studio instance:", rcq)
+                print("skipping item as not proper studio instance:", item.getID())
                 continue
             # avoid duplicates, catch errors
-            addtolist(final.recordedat, rcq)
+            addtolist(final.recordedat, item.getID())
 
     return final
 
