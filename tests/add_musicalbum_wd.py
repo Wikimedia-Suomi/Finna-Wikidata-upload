@@ -106,6 +106,7 @@ class FinnaRecord:
         self.origlangcode = None
         self.duration = None
         self.location = list() # luontipaikka
+        self.locationyso = list() # luontipaikka, yso-identifier (just number)
         self.recordedat = list() # äänitysstudio?
         self.recordingplace = list() # äänityspaikka
         
@@ -539,6 +540,7 @@ class FinnaRecord:
                 # <datafield tag="260" ind1=" " ind2=" "><subfield code="a">[Tampere] :</subfield><subfield code="b">Poko Records,</subfield><subfield code="c">℗ 1992.</subfield>
                 # -> publisher, copyright, release
                 # <datafield tag="260" ind1=" " ind2=" "><subfield code="a">[Helsinki] :</subfield><subfield code="b">Texicalli Records,</subfield><subfield code="c">[℗ 2003]</subfield></datafield>
+                # <datafield tag="260" ind1=" " ind2=" "><subfield code="a">London :</subfield><subfield code="b">Century Media Records,</subfield><subfield code="c">p2012.</subfield>
 
                 if (dftag == "260" and dind1 == " " and dind2 == " " and sfcode == "a"): # -> publisher location
                     # parse: if there is city/country in bracket remove brackets?
@@ -605,17 +607,27 @@ class FinnaRecord:
 
                 # if dftag == 264, ind1 == " ", ind2 == 4 and sfcode == c -> year 
 
+                # decade.. not useful if we get year (which we want)
+                # <datafield tag="388" ind1="1" ind2=" "><subfield code="a">2020-luku</subfield><subfield code="2">yso/fin</subfield><subfield code="0">http://www.yso.fi/onto/yso/p6202062029</subfield></datafield>
+
                 # <datafield tag="028" ind1="0" ind2="1"><subfield code="b">New Music Community</subfield><subfield code="a">NMC-001</subfield>
                 if (dftag == "028" and dind1 == "0" and dind2 == "1" and sfcode == "b"): # -> publisher name 
                     # this might be "brand" instead of actual publishing entity? try to use more accurate
                     if (len(self.publishernames) == 0):
                         # cleanup, don't add duplicates
                         cleanupaddtolist(self.publishernames, sftext)
-                    
+
+                # <datafield tag="370" ind1=" " ind2=" "><subfield code="g">Suomi</subfield><subfield code="2">yso/fin</subfield><subfield code="0">http://www.yso.fi/onto/yso/p94426</subfield></datafield>
                 # <datafield tag="370" ind1=" " ind2=" "><subfield code="g">Suomi</subfield> 
                 if (dftag == "370" and dind1 == " " and dind2 == " " and sfcode == "g"): # -> luontipaikka
                     # cleanup, don't add duplicates
                     cleanupaddtolist(self.location, sftext)
+                if (dftag == "370" and dind1 == " " and dind2 == " " and sfcode == "0"): # -> luontipaikka
+                    # yso-url -> strip to plain identifier for search
+                    tmptext = sftext
+                    tmptext = tmptext.replace("http://www.yso.fi/onto/yso/p", "")
+                    tmptext = tmptext.replace("/", "")
+                    cleanupaddtolist(self.locationyso, tmptext)
                     
                 # <datafield tag="518" ind1=" " ind2=" "><subfield code="o">Äänitys:</subfield><subfield code="p">[Helsinki], Finnvox Studiot.</subfield><
                 if (dftag == "518" and dind1 == " " and dind2 == " " and sfcode == "p"): # -> äänityspaikka
@@ -1054,8 +1066,11 @@ def searchItembySparql(repo, text, withabout=False, withschema=True, searchaltla
         # -> strip it
         itemqcode = parseqcodefromwikidatalink(page_id)
         if (isQcode(itemqcode) == False):
+            # sometimes there is article url instead of qcode, verify
             print("not a valid qcode: ", itemqcode)
             continue
+
+        print("DEBUG: page id:", page_id , " qcode:", itemqcode)
 
         # queries can give duplicates if items have multiple instances of
         # or alternative labels (depending on query) -> skip check if we already accepted same qcode
@@ -2122,6 +2137,8 @@ def recordstoparams(repo, commands, finnarecord = None):
         if (isinbrackets(plname) == True):
             plname = removefirstlastbracket(plname)
 
+        # TODO: if we can get YSO-identifier from data, search by that?
+
         # we could shortcut some
         #if (plname == "maailmanlaajuinen"):
         #if (plname == "Eurooppa"):
@@ -2150,37 +2167,61 @@ def recordstoparams(repo, commands, finnarecord = None):
             # avoid duplicates, catch errors
             addtolist(final.places, item.getID())
 
-    # publishing location/area
-    for locname in finnarecord.location:
-        
-        # we could shortcut some
-        #if (plname == "maailmanlaajuinen"):
-        #if (plname == "Eurooppa"):
-        #if (plname == "Suomi"):
-
-        # should be country name
-        locqcodes = searchItembySparql(repo, locname, True, False, False, 'fi', 'Q3624078')
-        if (len(locqcodes) == 0):
-            print("note, no qcode for location:", locname)
-            continue
-        
-        for item in locqcodes:
-            # must be city or country ?
-            #kaupunki (Q515)
-            #valtio (Q7275)
-            #itsenäinen valtio (Q3624078)
-            #maa (Q6256)
-
-            # itsenäinen valtio (Q3624078)
-            # yhtenäisvaltio (Q179164)
-            #item = getitembyqcode(repo, locq)
-            if (isItemInstanceOf(item, 'Q515') == False 
-                and isItemInstanceOf(item, 'Q7275') == False 
-                and isItemInstanceOf(item, 'Q6256') == False):
-                print("skipping item as not proper place instance:", item.getID())
+    # publishing location/area, if we have yso-id try that first
+    if (len(finnarecord.locationyso) > 0):
+        for locyso in finnarecord.locationyso:
+            # search from yso-property by yso-id
+            loclist = searchbySparqlPropValue(repo, "P2347", locyso)
+            if (len(loclist) == 0):
+                print("note, no qcode for yso-id:", locyso)
                 continue
-            # avoid duplicates, catch errors
-            addtolist(final.location, item.getID())
+            for item in loclist:
+                # check it is a location we can use, if we have yso it should be ok?
+                if (isItemInstanceOf(item, 'Q515') == False 
+                    and isItemInstanceOf(item, 'Q7275') == False 
+                    and isItemInstanceOf(item, 'Q6256') == False):
+                    print("skipping item as not proper place instance:", item.getID())
+                    continue
+
+                print("DEBUG: found location qcode:", item.getID(), "for yso-id:", locyso)
+
+                # avoid duplicates, catch errors
+                addtolist(final.location, item.getID())
+                
+    # not found by yso or not it was not given
+    if (len(finnarecord.locationyso) == 0 or len(final.location) == 0):
+        for locname in finnarecord.location:
+            
+            # we could shortcut some
+            #if (plname == "maailmanlaajuinen"):
+            #if (plname == "Eurooppa"):
+            #if (plname == "Suomi"):
+            
+            # TODO: if we can get YSO-identifier from data, search by that?
+
+            # should be country name
+            locqcodes = searchItembySparql(repo, locname, True, False, False, 'fi', 'Q3624078')
+            if (len(locqcodes) == 0):
+                print("note, no qcode for location:", locname)
+                continue
+            
+            for item in locqcodes:
+                # must be city or country ?
+                #kaupunki (Q515)
+                #valtio (Q7275)
+                #itsenäinen valtio (Q3624078)
+                #maa (Q6256)
+
+                # itsenäinen valtio (Q3624078)
+                # yhtenäisvaltio (Q179164)
+                #item = getitembyqcode(repo, locq)
+                if (isItemInstanceOf(item, 'Q515') == False 
+                    and isItemInstanceOf(item, 'Q7275') == False 
+                    and isItemInstanceOf(item, 'Q6256') == False):
+                    print("skipping item as not proper place instance:", item.getID())
+                    continue
+                # avoid duplicates, catch errors
+                addtolist(final.location, item.getID())
 
     # recording studio
     for recstudio in finnarecord.recordedat:
