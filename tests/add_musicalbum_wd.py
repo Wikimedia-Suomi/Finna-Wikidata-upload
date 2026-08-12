@@ -956,8 +956,9 @@ def getlabelofpropbylangfromitem(repo, item, prop, lang):
         propitem = getitembyqcode(repo, qid)
         if (propitem != None):
             lbls = getlabelbylangfromitem(propitem, lang)
-            for l in lbls:
-                addtolist(qlist, qlist)
+            if (lbls != None):
+                for l in lbls:
+                    addtolist(qlist, qlist)
     return qlist
 
 def isItemInstanceOf(item, qcode):
@@ -2147,6 +2148,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             # try with alias first
             pqcodes = searchItembySparql(repo, pname, True, False, True, 'fi')
             if (len(pqcodes) == 0):
+                # we should use 'mul' as fallback but many have english label instead still
                 # try again
                 # 'Q18127' tai  'Q2442401'
                 # also try without language schema
@@ -2173,6 +2175,9 @@ def recordstoparams(repo, commands, finnarecord = None):
             
             # name of location(s) of hq for this publisher (for country match) as finna gives city
             hqplaces = getlabelofpropbylangfromitem(repo, item, 'P159', 'fi')
+            if (len(hqplaces) == 0):
+                # should use 'mul' as fallback but try english for now
+                hqplaces = getlabelofpropbylangfromitem(repo, item, 'P159', 'en')
             print("DEBUG: hq-list", hqplaces)
             
             if (len(finnarecord.publishingplaces) > 0 and len(hqplaces) > 0):
