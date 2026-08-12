@@ -100,6 +100,7 @@ class FinnaRecord:
         self.artistname = list()
         self.publishernames = list() # must find from xml
         self.publishingplaces = list()# must find from xml
+        self.labelnames = list() # must find from xml
         self.genres = list()# must find from xml
         #self.releaseyear = None
         self.languagecode = None
@@ -109,6 +110,8 @@ class FinnaRecord:
         self.locationyso = list() # luontipaikka, yso-identifier (just number)
         self.recordedat = list() # äänitysstudio?
         self.recordingplace = list() # äänityspaikka
+        
+        self.catalogidentifiers = list() # catalog identifiers
         
         self.compilation = False
         
@@ -252,6 +255,8 @@ class FinnaRecord:
         
         # TODO: need to improve this, parse the xml instead?
         # other values?
+        # 1/Sound/SoundDisc/ or "Äänilevy" -> LP-levy ?
+        # 1 äänilevy
         if (f_pd == "1 CD-äänilevy"):
             return True
         return False
@@ -545,7 +550,7 @@ class FinnaRecord:
                 if (dftag == "260" and dind1 == " " and dind2 == " " and sfcode == "a"): # -> publisher location
                     # parse: if there is city/country in bracket remove brackets?
                     tmptext = sftext
-                    if (endswith(tmptext, ":") == True):
+                    if (endswith(tmptext, ":") == True or endswith(tmptext, ";") == True):
                         tmptext = removelastchar(tmptext)
                         tmptext = tmptext.strip()
 
@@ -613,9 +618,12 @@ class FinnaRecord:
                 # <datafield tag="028" ind1="0" ind2="1"><subfield code="b">New Music Community</subfield><subfield code="a">NMC-001</subfield>
                 if (dftag == "028" and dind1 == "0" and dind2 == "1" and sfcode == "b"): # -> publisher name 
                     # this might be "brand" instead of actual publishing entity? try to use more accurate
-                    if (len(self.publishernames) == 0):
-                        # cleanup, don't add duplicates
-                        cleanupaddtolist(self.publishernames, sftext)
+                    # cleanup, don't add duplicates
+                    cleanupaddtolist(self.labelnames, sftext)
+
+                # <datafield tag="028" ind1="0" ind2="1"><subfield code="b">Poko</subfield><subfield code="a">PÄLP132</subfield></datafield>
+                if (dftag == "028" and dind1 == "0" and dind2 == "1" and sfcode == "a"): # -> catalog identifier
+                    cleanupaddtolist(self.catalogidentifiers, sftext)
 
                 # <datafield tag="370" ind1=" " ind2=" "><subfield code="g">Suomi</subfield><subfield code="2">yso/fin</subfield><subfield code="0">http://www.yso.fi/onto/yso/p94426</subfield></datafield>
                 # <datafield tag="370" ind1=" " ind2=" "><subfield code="g">Suomi</subfield> 
@@ -625,8 +633,9 @@ class FinnaRecord:
                 if (dftag == "370" and dind1 == " " and dind2 == " " and sfcode == "0"): # -> luontipaikka
                     # yso-url -> strip to plain identifier for search
                     tmptext = sftext
-                    tmptext = tmptext.replace("http://www.yso.fi/onto/yso/p", "")
-                    tmptext = tmptext.replace("/", "")
+                    if (tmptext.find("yso.fi/onto") > 0):
+                        tmptext = tmptext.replace("http://www.yso.fi/onto/yso/p", "")
+                        tmptext = tmptext.replace("/", "")
                     cleanupaddtolist(self.locationyso, tmptext)
                     
                 # <datafield tag="518" ind1=" " ind2=" "><subfield code="o">Äänitys:</subfield><subfield code="p">[Helsinki], Finnvox Studiot.</subfield><
@@ -682,8 +691,10 @@ class FinnaRecord:
 
                 # <datafield tag="300" ind1=" " ind2=" "><subfield code="a">1 C-kasetti (00\'00)</subfield>
                 if (dftag == "300" and dind1 == " " and dind2 == " " and sfcode == "a"): #
-                    #if (sftext.find("C-kasetti") > 0):
-                    cleanupaddtolist(self.releaseformat, sftext)
+                    if (sftext.find("C-kasetti") > 0):
+                        cleanupaddtolist(self.releaseformat, "C-kasetti")
+                    if (sftext.find("CD-äänilevy") > 0):
+                        cleanupaddtolist(self.releaseformat, "CD-äänilevy")
 
 
         print("parsed fields in xml record")
@@ -716,7 +727,9 @@ class FinalParams:
         
         # list of release formats is not readily available
         # as library information is per item
-        #self.releaseformat = list() # CD/LP/DVD..
+        self.releaseformat = list() # CD/LP/DVD..
+
+        self.catalogidentifiers = list() # catalog identifiers
 
         self.issingle = False
         self.instancetype = ''
@@ -1268,13 +1281,18 @@ def getdistributionqcode(dist):
     # - CD single englanti (Q719645)
     # - vinyylilevy (Q178588)
     # - 7 tuuman single (Q6128115)
+    # - LP-levy (Q841983)
+    # - C-kasetti (Q149757)
     # - digitaalinen jakelu (Q269415)
     # - musiikin lataus (Q6473564)
     # - musiikin suoratoisto (Q15982450)
-    # C-äänikasetti
     
     d_disttoqcode = dict()
-    d_disttoqcode["CD-levy"] = "Q34467"
+    d_disttoqcode["CD-äänilevy"] = "Q34467" # CD-levy
+    
+    d_disttoqcode["LP-levy"] = "Q841983"
+    #d_disttoqcode["äänilevy"] = "Q841983"
+    d_disttoqcode["C-äänikasetti"] = "Q149757" # C-kasetti 
 
     if dist in d_disttoqcode:
         return d_disttoqcode[dist]
@@ -1540,11 +1558,25 @@ def add_album_properties(repo, wditem, final):
             wditem.addClaim(prodclaim)#, summary='Adding 1 claim')
 
 
-    # kappalelista (P658) ja taideteoksen osien lukumäärä (P2635) (ääniraitojen määrä)
-    # -> need to create items for each track..
+    # kappalelista (P658)
+    # -> also need to create items for each track..?
+    # taideteoksen osien lukumäärä (P2635) (ääniraitojen määrä)
 
     # jakelumuoto (P437), LP, CD, digitaalinen jakelu..
     # CD might be simple to get, other formats maybe not
+    if not 'P437' in wditem.claims:
+
+        for rform in final.releaseformat:
+            print("Adding claim: releaseformat ", rform)
+    
+            rfclaim = add_item_link(repo, 'P437', rform)
+
+            if (final.sourceurl != ""):
+                srcclaim = add_item_source_url(repo, final.sourceurl)
+                rfclaim.addSource(srcclaim)
+
+            wditem.addClaim(rfclaim)#, summary='Adding 1 claim')
+
 
     # äänityspaikka (P483)
     # -> not always parseable in finna data (if given)
@@ -1657,12 +1689,20 @@ def add_album_properties(repo, wditem, final):
     if not 'P264' in wditem.claims:
         
         # note: might have multiple publishers..
-        
+        # -> in some cases, should be parsed/split 
         for lq in final.publishers:
             
             print("Adding claim: record label", lq)
             labelclaim = add_item_link(repo, 'P264', lq)
-
+            
+            # add qualifier catalog number if known, may have multiple
+            # luettelointitunnus (P528)
+            for catid in final.catalogidentifiers:
+                print("Adding claim: catalog identifier", catid)
+                
+                catclaim = add_item_qualifier(repo, 'P528', catid)
+                labelclaim.addQualifier(catclaim)
+            
             # add source if given
             if (final.sourceurl != ""):
                 srcclaim = add_item_source_url(repo, final.sourceurl)
@@ -1710,13 +1750,26 @@ def add_album_properties(repo, wditem, final):
 
             wditem.addClaim(locclaim)#, summary='Adding 1 claim')
 
+    # luettelointitunnus (P528)
+    # -> only use as qualifier for release instead of as own property
+    #if not 'P528' in wditem.claims:
+        #for catid in final.catalogidentifiers:
+            #print("Adding claim: catalog identifier", catid)
+            
+            #catclaim = add_item_value(repo, 'P528', catid)
+            #if (final.sourceurl != ""):
+            #    srcclaim = add_item_source_url(repo, final.sourceurl)
+            #    catclaim.addSource(srcclaim)
+            #wditem.addClaim(catclaim)#, summary='Adding 1 claim')
 
+
+# external identifiers
 def add_album_identifiers(repo, wditem, commands):
     
     # can we add all at once this way?
     # no, not supported..
     #vclaimlist = []
-
+    
     # discogs master
     if not 'P1954' in wditem.claims:
         if "discogsmaster" in commands:
@@ -2000,6 +2053,12 @@ def recordstoparams(repo, commands, finnarecord = None):
     if (finnarecord == None):
         return final
 
+    # if we have detected some format(s)..
+    for relform in finnarecord.releaseformat:
+        rformcode = getdistributionqcode(relform)
+        if (rformcode != ""):
+            addtolist(final.releaseformat, rformcode)
+
     # might be EP or something else too or tag may be missing:
     # only mark as single if high confidence (explicit tag found)
     if (finnarecord.issingle() == True):
@@ -2094,7 +2153,7 @@ def recordstoparams(repo, commands, finnarecord = None):
                 pqcodes = searchItembySparql(repo, pname, False, False, False, 'en', 'Q18127')
                 if (len(pqcodes) == 0):
                     pqcodes = searchItembySparql(repo, pname, True, False, True, 'en', 'Q18127')
-        
+
         # check also that publisher from query is in same country as publisher in finna data:
         # different publishers with same name can exist in different countries (for example, LeBaron Music),
         # finna data has often publishing city so try to match that to location of headquarters as well
@@ -2126,6 +2185,18 @@ def recordstoparams(repo, commands, finnarecord = None):
             else:
                 # we don't have publishing places to check so keep the qcode of publisher
                 addtolist(final.publishers, item.getID())
+
+    # label identifier ("brand"): in case publisher was not given?
+    if (len(final.publishers) == 0 and len(finnarecord.labelnames) > 0):
+        for lblname in finnarecord.labelnames:
+            # try to search only from levymerkki (Q18127)
+            lblcodes = searchItembySparql(repo, pname, False, False, False, 'fi', 'Q18127')
+            if (len(lblcodes) == 0):
+                lblcodes = searchItembySparql(repo, pname, True, False, True, 'fi', 'Q18127')
+
+            for item in lblcodes:
+                addtolist(final.publishers, item.getID())
+
 
     # publishing location/area
     for plname in finnarecord.publishingplaces:
@@ -2241,6 +2312,10 @@ def recordstoparams(repo, commands, finnarecord = None):
                 continue
             # avoid duplicates, catch errors
             addtolist(final.recordedat, item.getID())
+
+    # nothing to do, use as-is
+    for catident in finnarecord.catalogidentifiers:
+        addtolist(final.catalogidentifiers, catident)
 
     return final
 
