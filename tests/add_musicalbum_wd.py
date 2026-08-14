@@ -601,7 +601,7 @@ class FinnaRecord:
 
                     tmptext = sftext
                     # check for ; as well?
-                    if (endswith(tmptext, ",") == True):
+                    if (endswith(tmptext, ",") == True or endswith(tmptext, ":") == True):
                         tmptext = removelastchar(tmptext)
                         tmptext = tmptext.strip()
                     
@@ -617,9 +617,16 @@ class FinnaRecord:
 
                 # <datafield tag="028" ind1="0" ind2="1"><subfield code="b">New Music Community</subfield><subfield code="a">NMC-001</subfield>
                 if (dftag == "028" and dind1 == "0" and dind2 == "1" and sfcode == "b"): # -> publisher name 
+
+                    tmptext = sftext
+                    # check for ; as well?
+                    if (endswith(tmptext, ":") == True):
+                        tmptext = removelastchar(tmptext)
+                        tmptext = tmptext.strip()
+                    
                     # this might be "brand" instead of actual publishing entity? try to use more accurate
                     # cleanup, don't add duplicates
-                    cleanupaddtolist(self.labelnames, sftext)
+                    cleanupaddtolist(self.labelnames, tmptext)
 
                 # <datafield tag="028" ind1="0" ind2="1"><subfield code="b">Poko</subfield><subfield code="a">PÄLP132</subfield></datafield>
                 if (dftag == "028" and dind1 == "0" and dind2 == "1" and sfcode == "a"): # -> catalog identifier
@@ -1373,6 +1380,11 @@ def isArtistItem(item):
         if (qid == 'Q113292621'):
             return True
         
+        # black metal -yhtye (Q106581115)
+        # subcategory of Q56816954
+        if (qid == 'Q106581115'):
+            return True
+        
     return False
 
 def isAlbumItem(item):
@@ -1696,6 +1708,7 @@ def add_album_properties(repo, wditem, final):
             print("Adding claim: record label", lq)
             labelclaim = add_item_link(repo, 'P264', lq)
             
+            # TODO: for multiple identifiers, add multiple entries instead of grouping under one?
             # add qualifier catalog number if known, may have multiple
             # luettelointitunnus (P528)
             for catid in final.catalogidentifiers:
@@ -2319,6 +2332,7 @@ def recordstoparams(repo, commands, finnarecord = None):
             addtolist(final.recordedat, item.getID())
 
     # nothing to do, use as-is
+    # TODO: check the label associated with each identifier
     for catident in finnarecord.catalogidentifiers:
         addtolist(final.catalogidentifiers, catident)
 
