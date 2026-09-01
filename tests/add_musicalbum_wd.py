@@ -1326,6 +1326,8 @@ def getprenseterroleqcode(prole):
 # language of album
 def getlanguageqcode(lang):
 
+    # ei kielellistä sisältöä (Q22282939) - zxx
+
     # mapping language to qcode
     d_langqcode = dict()
     d_langqcode["englanti"] = "Q1860"
@@ -1367,12 +1369,19 @@ def isArtistItem(item):
         # band
         if (qid == 'Q215380'):
             return True
-        # metal band
+        # metal band metalliyhtye (Q56816954)
         if (qid == 'Q56816954'):
             return True
         # rockyhtye (Q5741069)
         if (qid == 'Q5741069'):
             return True
+        # popyhtye (Q2491498)
+        if (qid == 'Q2491498'):
+            return True
+        # jazzyhtye (Q1684430)
+        if (qid == 'Q1684430'):
+            return True
+        
         #muusikkoduo (Q9212979)
         if (qid == 'Q9212979'):
             return True
@@ -2168,6 +2177,10 @@ def recordstoparams(repo, commands, finnarecord = None):
                 pqcodes = searchItembySparql(repo, pname, False, False, False, 'en', 'Q18127')
                 if (len(pqcodes) == 0):
                     pqcodes = searchItembySparql(repo, pname, True, False, True, 'en', 'Q18127')
+
+            # try with 'mul' language
+            if (len(pqcodes) == 0):
+                pqcodes = searchItembySparql(repo, pname, False, False, False, 'mul')
 
         # check also that publisher from query is in same country as publisher in finna data:
         # different publishers with same name can exist in different countries (for example, LeBaron Music),
