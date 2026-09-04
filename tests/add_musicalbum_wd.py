@@ -2221,9 +2221,9 @@ def recordstoparams(repo, commands, finnarecord = None):
     if (len(final.publishers) == 0 and len(finnarecord.labelnames) > 0):
         for lblname in finnarecord.labelnames:
             # try to search only from levymerkki (Q18127)
-            lblcodes = searchItembySparql(repo, pname, False, False, False, 'fi', 'Q18127')
+            lblcodes = searchItembySparql(repo, lblname, False, False, False, 'fi', 'Q18127')
             if (len(lblcodes) == 0):
-                lblcodes = searchItembySparql(repo, pname, True, False, True, 'fi', 'Q18127')
+                lblcodes = searchItembySparql(repo, lblname, True, False, True, 'fi', 'Q18127')
 
             for item in lblcodes:
                 addtolist(final.publishers, item.getID())
