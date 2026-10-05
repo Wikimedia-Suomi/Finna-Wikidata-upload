@@ -2163,24 +2163,31 @@ def recordstoparams(repo, commands, finnarecord = None):
 
         print("DEBUG: looking for publisher:", pname)
 
+        # try easy case first if there is publisher with exact name in finnihs
         pqcodes = searchItembySparql(repo, pname, False, False, False, 'fi')
         if (len(pqcodes) == 0):
-            print("note, no qcode for publisher:", pname)
-
-            # try with alias first
+            # try with alias in finnish
             pqcodes = searchItembySparql(repo, pname, True, False, True, 'fi')
+            
+        # try with 'mul' language
+        if (len(pqcodes) == 0):
+            pqcodes = searchItembySparql(repo, pname, False, False, False, 'mul')
+            
+            # try alias with 'mul' language
             if (len(pqcodes) == 0):
-                # we should use 'mul' as fallback but many have english label instead still
-                # try again
-                # 'Q18127' tai  'Q2442401'
-                # also try without language schema
-                pqcodes = searchItembySparql(repo, pname, False, False, False, 'en', 'Q18127')
-                if (len(pqcodes) == 0):
-                    pqcodes = searchItembySparql(repo, pname, True, False, True, 'en', 'Q18127')
+                pqcodes = searchItembySparql(repo, pname, True, False, True, 'mul')
+            
+        if (len(pqcodes) == 0):
+            # if 'mul' is not defined try english label instead
+            # try again
+            # 'Q18127' tai  'Q2442401'
+            # also try without language schema
+            pqcodes = searchItembySparql(repo, pname, False, False, False, 'en', 'Q18127')
+            if (len(pqcodes) == 0):
+                pqcodes = searchItembySparql(repo, pname, True, False, True, 'en', 'Q18127')
 
-            # try with 'mul' language
-            if (len(pqcodes) == 0):
-                pqcodes = searchItembySparql(repo, pname, False, False, False, 'mul')
+        if (len(pqcodes) == 0):
+            print("note, no qcode for publisher:", pname)
 
         # check also that publisher from query is in same country as publisher in finna data:
         # different publishers with same name can exist in different countries (for example, LeBaron Music),
