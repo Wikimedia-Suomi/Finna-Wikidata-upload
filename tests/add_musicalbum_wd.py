@@ -2338,10 +2338,20 @@ def recordstoparams(repo, commands, finnarecord = None):
         
         reccodes = searchItembySparql(repo, recstudio, False, False, False, 'fi')
         if (len(reccodes) == 0):
-            print("note, no qcode for studio name:", recstudio)
             
             # try alias
             reccodes = searchItembySparql(repo, recstudio, False, False, True, 'fi')
+
+        # try with 'mul' language
+        if (len(reccodes) == 0):
+            reccodes = searchItembySparql(repo, recstudio, False, False, False, 'mul')
+
+        # try alias with 'mul' language
+        if (len(reccodes) == 0):
+            reccodes = searchItembySparql(repo, recstudio, True, False, True, 'mul')
+
+        if (len(reccodes) == 0):
+            print("note, no qcode for studio name:", recstudio)
 
         for item in reccodes:
             #item = getitembyqcode(repo, rcq)
