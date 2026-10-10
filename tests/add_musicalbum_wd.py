@@ -2226,13 +2226,35 @@ def recordstoparams(repo, commands, finnarecord = None):
 
     # label identifier ("brand"): in case publisher was not given?
     if (len(final.publishers) == 0 and len(finnarecord.labelnames) > 0):
+
         for lblname in finnarecord.labelnames:
-            # try to search only from levymerkki (Q18127)
-            lblcodes = searchItembySparql(repo, lblname, False, False, False, 'fi', 'Q18127')
+            
+            print("DEBUG: looking for record label name:", lblname)
+
+            lblcodes = searchItembySparql(repo, lblname, False, False, False, 'fi')
+
             if (len(lblcodes) == 0):
+                # try to search only from levymerkki (Q18127)
+                lblcodes = searchItembySparql(repo, lblname, False, False, False, 'fi', 'Q18127')
+            if (len(lblcodes) == 0):
+                # try with alias
                 lblcodes = searchItembySparql(repo, lblname, True, False, True, 'fi', 'Q18127')
 
+            # try with 'mul' language
+            if (len(lblcodes) == 0):
+                lblcodes = searchItembySparql(repo, lblname, False, False, False, 'mul', 'Q18127')
+            # try alias with 'mul' language
+            if (len(lblcodes) == 0):
+                lblcodes = searchItembySparql(repo, lblname, True, False, True, 'mul', 'Q18127')
+
+            if (len(lblcodes) == 0):
+                print("note, no qcode for record label:", lblname)
+
             for item in lblcodes:
+                if (isRecordLabel(item) == False):
+                    print("skipping item as not proper record label instance:", item.getID())
+                    continue
+                
                 addtolist(final.publishers, item.getID())
 
 
